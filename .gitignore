@@ -18,4 +18,4 @@ stuff
 .flatpak-builder/
 autobuild/
 dist
-
+reinstall_flatpak.sh
