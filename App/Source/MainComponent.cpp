@@ -37,6 +37,7 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 #include "Plugins/Phaser/NextPhaserPlugin.h"
 #include "Plugins/Saturation/NextSaturationPlugin.h"
 #include "Plugins/SimpleSynth/SimpleSynthPlugin.h"
+#include "Plugins/SoundFont/SoundFontPlugin.h"
 #include "Plugins/SpectrumAnalyzer/SpectrumAnalyzerPlugin.h"
 #include "SideBrowser/ProjectsBrowser.h"
 #include "SideBrowser/SidebarComponent.h"
@@ -89,6 +90,7 @@ MainComponent::MainComponent(ApplicationViewState &state)
     m_engine.getPluginManager().createBuiltInType<NextPhaserPlugin>();
     m_engine.getPluginManager().createBuiltInType<NextSaturationPlugin>();
     m_engine.getPluginManager().createBuiltInType<NextFilterPlugin>();
+    m_engine.getPluginManager().createBuiltInType<SoundFontPlugin>();
 
     openValidStartEdit();
 

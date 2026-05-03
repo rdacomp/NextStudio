@@ -65,6 +65,7 @@ public:
     juce::OwnedArray<AddButton> &getAddButtons();
     juce::OwnedArray<PluginChainItemView> &getPluginComponents();
     void insertPluginAtVisualIndex(te::Plugin::Ptr plugin, int visualIndex, bool selectInserted);
+    void insertSoundFontAtVisualIndex(const juce::File &file, int visualIndex, bool selectInserted);
 
     void ensureRackOrderConsistency();
     juce::StringArray getRackOrder() const;
@@ -168,12 +169,12 @@ public:
           m_appState(appState)
     {
     }
-    inline bool isInterestedInDragSource(const SourceDetails & /*dragSourceDetails*/) override { return true; }
+    bool isInterestedInDragSource(const SourceDetails &dragSourceDetails) override;
     void itemDropped(const SourceDetails &dragSourceDetails) override;
 
     void itemDragMove(const SourceDetails &dragSourceDetails) override
     {
-        if (dragSourceDetails.description == "PluginComp" || dragSourceDetails.description == "PluginListEntry")
+        if (dragSourceDetails.description == "PluginComp" || dragSourceDetails.description == "PluginListEntry" || dragSourceDetails.description == "Instrument or Effect" || dragSourceDetails.description == "FileBrowser")
         {
             isOver = true;
         }

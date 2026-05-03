@@ -31,6 +31,7 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 #include "Plugins/Phaser/NextPhaserPlugin.h"
 #include "Plugins/Saturation/NextSaturationPlugin.h"
 #include "Plugins/SimpleSynth/SimpleSynthPlugin.h"
+#include "Plugins/SoundFont/SoundFontPlugin.h"
 #include "Plugins/SpectrumAnalyzer/SpectrumAnalyzerPlugin.h"
 #include "Utilities/EditViewState.h"
 #include "juce_graphics/juce_graphics.h"
@@ -1842,6 +1843,36 @@ tracktion_engine::AudioTrack::Ptr EngineHelpers::addAudioTrack(bool isMidiTrack,
     return nullptr;
 }
 
+tracktion_engine::AudioTrack::Ptr EngineHelpers::addSoundFontTrack(EditViewState &evs, const juce::File &file, juce::Colour trackColour)
+{
+    auto plugin = createSoundFontPlugin(evs.m_edit, file);
+    if (plugin == nullptr)
+        return nullptr;
+
+    if (auto track = addAudioTrack(true, trackColour, evs))
+    {
+        track->setName(file.getFileNameWithoutExtension());
+
+        te::Plugin::Ptr insertedPlugin;
+        const auto insertResult = insertPluginWithPreset(evs, track, plugin, -1, &insertedPlugin);
+        if (insertResult == PluginInsertResult::inserted)
+        {
+            if (auto *soundFontPlugin = dynamic_cast<SoundFontPlugin *>(insertedPlugin.get()))
+            {
+                if (soundFontPlugin->hasLoadedSoundFont())
+                    return track;
+
+                if (const auto errorMessage = soundFontPlugin->getLastError(); errorMessage.isNotEmpty())
+                    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon, "Failed to load SoundFont", errorMessage);
+            }
+        }
+
+        evs.m_edit.deleteTrack(track);
+    }
+
+    return nullptr;
+}
+
 tracktion_engine::WaveAudioClip::Ptr EngineHelpers::loadAudioFileOnNewTrack(EditViewState &evs, const juce::File &file, juce::Colour trackColour, double insertTime)
 {
     te::AudioFile audioFile(evs.m_edit.engine, file);
@@ -1884,6 +1915,20 @@ void EngineHelpers::refreshRelativePathsToNewEditFile(EditViewState &evs, const 
                 auto relPath = source.getRelativePathFrom(newFile.getParentDirectory());
 
                 c->state.setProperty(te::IDs::source, relPath, nullptr);
+            }
+        }
+
+        for (auto *plugin : t->pluginList.getPlugins())
+        {
+            if (auto *soundFontPlugin = dynamic_cast<SoundFontPlugin *>(plugin))
+            {
+                const auto storedPath = soundFontPlugin->state.getProperty("soundFontPath").toString();
+                if (storedPath.isEmpty())
+                    continue;
+
+                const auto resolvedFile = evs.m_edit.filePathResolver != nullptr ? evs.m_edit.filePathResolver(storedPath) : juce::File(storedPath);
+                const auto updatedPath = juce::File::isAbsolutePath(resolvedFile.getFullPathName()) ? resolvedFile.getRelativePathFrom(newFile.getParentDirectory()) : resolvedFile.getFullPathName();
+                soundFontPlugin->state.setProperty("soundFontPath", updatedPath, nullptr);
             }
         }
     }
@@ -2302,6 +2347,26 @@ void EngineHelpers::insertPlugin(te::Track::Ptr track, te::Plugin::Ptr plugin, i
     plugins.insertPlugin(plugin->state, index);
 }
 
+bool EngineHelpers::isSoundFontFile(const juce::File &file) { return file.existsAsFile() && file.getFileExtension().equalsIgnoreCase(".sf2"); }
+
+te::Plugin::Ptr EngineHelpers::createSoundFontPlugin(te::Edit &edit, const juce::File &file)
+{
+    if (!isSoundFontFile(file))
+        return {};
+
+    const auto desc = getPluginDesc("soundfont_drag_trkbuiltin", SoundFontPlugin::getPluginName(), SoundFontPlugin::xmlTypeName, true);
+    auto plugin = edit.getPluginCache().createNewPlugin(SoundFontPlugin::xmlTypeName, desc);
+    auto *soundFontPlugin = dynamic_cast<SoundFontPlugin *>(plugin.get());
+
+    if (soundFontPlugin == nullptr)
+        return {};
+
+    if (!soundFontPlugin->loadSoundFontFile(file.getFullPathName()))
+        return {};
+
+    return plugin;
+}
+
 // Helper class to bridge te::Plugin to PluginPresetInterface specifically for loading init presets
 class InitPresetLoaderAdapter : public PluginPresetInterface
 {
@@ -2338,7 +2403,7 @@ private:
     ApplicationViewState &m_appState;
 };
 
-EngineHelpers::PluginInsertResult EngineHelpers::insertPluginWithPreset(EditViewState &evs, te::Track::Ptr track, te::Plugin::Ptr plugin, int index)
+EngineHelpers::PluginInsertResult EngineHelpers::insertPluginWithPreset(EditViewState &evs, te::Track::Ptr track, te::Plugin::Ptr plugin, int index, te::Plugin::Ptr *insertedPlugin)
 {
     if (track == nullptr || plugin == nullptr)
         return PluginInsertResult::invalidInput;
@@ -2361,7 +2426,12 @@ EngineHelpers::PluginInsertResult EngineHelpers::insertPluginWithPreset(EditView
     // Insert and capture the new plugin instance
     auto newPlugin = plugins.insertPlugin(plugin->state, index);
 
-    if (newPlugin && newPlugin->isSynth() && newPlugin->getPluginType() != te::ExternalPlugin::xmlTypeName)
+    if (insertedPlugin != nullptr)
+        *insertedPlugin = newPlugin;
+
+    const bool hasExplicitSoundFontState = newPlugin != nullptr && dynamic_cast<SoundFontPlugin *>(newPlugin.get()) != nullptr && dynamic_cast<SoundFontPlugin *>(newPlugin.get())->getSoundFontFilePath().isNotEmpty();
+
+    if (newPlugin && newPlugin->isSynth() && newPlugin->getPluginType() != te::ExternalPlugin::xmlTypeName && !hasExplicitSoundFontState)
     {
         InitPresetLoaderAdapter adapter(newPlugin, evs.m_applicationState);
         PresetHelpers::tryLoadInitPreset(adapter);
@@ -2561,6 +2631,7 @@ juce::Array<juce::PluginDescription> EngineHelpers::getInternalPlugins()
     list.add(getPluginDesc(juce::String(num++) + "_trkbuiltin", TRANS(NextFilterPlugin::getPluginName()), NextFilterPlugin::xmlTypeName, false));
     list.add(getPluginDesc(juce::String(num++) + "_trkbuiltin", TRANS(te::SamplerPlugin::getPluginName()), te::SamplerPlugin::xmlTypeName, true));
     list.add(getPluginDesc(juce::String(num++) + "_trkbuiltin", TRANS(te::FourOscPlugin::getPluginName()), te::FourOscPlugin::xmlTypeName, true));
+    list.add(getPluginDesc(juce::String(num++) + "_trkbuiltin", TRANS(SoundFontPlugin::getPluginName()), SoundFontPlugin::xmlTypeName, true));
     list.add(getPluginDesc(juce::String(num++) + "_trkbuiltin", TRANS(SimpleSynthPlugin::getPluginName()), SimpleSynthPlugin::xmlTypeName, true));
     list.add(getPluginDesc(juce::String(num++) + "_trkbuiltin", TRANS(ArpeggiatorPlugin::getPluginName()), ArpeggiatorPlugin::xmlTypeName, false));
     list.add(getPluginDesc(juce::String(num++) + "_trkbuiltin", TRANS(SpectrumAnalyzerPlugin::getPluginName()), SpectrumAnalyzerPlugin::xmlTypeName, false));

@@ -32,10 +32,13 @@
 #include "Plugins/Saturation/SaturationPluginComponent.h"
 #include "Plugins/SimpleSynth/SimpleSynthPlugin.h"
 #include "Plugins/SimpleSynth/SimpleSynthPluginComponent.h"
+#include "Plugins/SoundFont/SoundFontPlugin.h"
+#include "Plugins/SoundFont/SoundFontPluginComponent.h"
 #include "Plugins/SpectrumAnalyzer/SpectrumAnalyzerPlugin.h"
 #include "Plugins/SpectrumAnalyzer/SpectrumAnalyzerPluginComponent.h"
 #include "Plugins/VST/VstPluginComponent.h"
 #include "Plugins/Volume/VolumePluginComponent.h"
+#include "SideBrowser/Browser_Base.h"
 #include "Utilities/Utilities.h"
 
 //==============================================================================
@@ -46,6 +49,14 @@ static juce::Identifier getCollapsedStateID(te::EditItemID id)
 }
 
 static bool shouldShowPluginPresetManager(te::Plugin &plugin) { return plugin.isSynth() && plugin.getPluginType() != te::ExternalPlugin::xmlTypeName; }
+
+static juce::File getDraggedBrowserFile(const juce::DragAndDropTarget::SourceDetails &details)
+{
+    if (auto *browser = dynamic_cast<BrowserListBox *>(details.sourceComponent.get()))
+        return browser->getSelectedFile();
+
+    return {};
+}
 
 PluginChainItemView::PluginChainItemView(EditViewState &evs, te::Track::Ptr t, te::Plugin::Ptr p)
     : m_evs(evs),
@@ -118,6 +129,10 @@ PluginChainItemView::PluginChainItemView(EditViewState &evs, te::Track::Ptr t, t
     else if (m_plugin->getPluginType() == SimpleSynthPlugin::xmlTypeName)
     {
         m_pluginComponent = std::make_unique<SimpleSynthPluginComponent>(evs, p);
+    }
+    else if (m_plugin->getPluginType() == SoundFontPlugin::xmlTypeName)
+    {
+        m_pluginComponent = std::make_unique<SoundFontPluginComponent>(evs, p);
     }
     else if (m_plugin->getPluginType() == ArpeggiatorPlugin::xmlTypeName)
     {
@@ -221,6 +236,40 @@ void PluginChainItemView::paint(juce::Graphics &g)
         g.setColour(juce::Colour(0xffffffff));
         g.drawRect(getLocalBounds());
     }
+
+    if (m_isFileDropOver)
+    {
+        g.setColour(getTrackColour().withAlpha(0.2f));
+        g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(2.0f), 8.0f);
+    }
+}
+
+bool PluginChainItemView::isInterestedInDragSource(const SourceDetails &dragSourceDetails) { return m_plugin != nullptr && m_plugin->getPluginType() == SoundFontPlugin::xmlTypeName && dragSourceDetails.description == "FileBrowser" && EngineHelpers::isSoundFontFile(getDraggedBrowserFile(dragSourceDetails)); }
+
+void PluginChainItemView::itemDragMove(const SourceDetails &dragSourceDetails)
+{
+    m_isFileDropOver = isInterestedInDragSource(dragSourceDetails);
+    repaint();
+}
+
+void PluginChainItemView::itemDragExit(const SourceDetails &)
+{
+    m_isFileDropOver = false;
+    repaint();
+}
+
+void PluginChainItemView::itemDropped(const SourceDetails &dragSourceDetails)
+{
+    m_isFileDropOver = false;
+
+    if (auto *soundFontPlugin = dynamic_cast<SoundFontPlugin *>(m_plugin.get()))
+    {
+        const auto draggedFile = getDraggedBrowserFile(dragSourceDetails);
+        if (EngineHelpers::isSoundFontFile(draggedFile))
+            soundFontPlugin->loadSoundFontFile(draggedFile.getFullPathName());
+    }
+
+    repaint();
 }
 
 void PluginChainItemView::mouseDown(const juce::MouseEvent &e)

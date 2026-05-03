@@ -6,3 +6,6 @@
 [submodule "modules/rubberband"]
 	path = modules/rubberband
 	url = https://github.com/breakfastquay/rubberband.git
+[submodule "modules/tinysoundfont"]
+	path = modules/tinysoundfont
+	url = https://github.com/schellingb/TinySoundFont.git

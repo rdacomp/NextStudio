@@ -21,6 +21,7 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 
 #include "LowerRange/PluginChain/PluginChainView.h"
 #include "Plugins/SimpleSynth/SimpleSynthPluginComponent.h"
+#include "SideBrowser/Browser_Base.h"
 #include "SideBrowser/InstrumentEffectChooser.h"
 #include "UI/PluginInsertFeedback.h"
 #include "UI/PluginMenu.h"
@@ -31,6 +32,14 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 namespace
 {
 bool pluginTreeItemMatchesRole(const PluginTreeItem &item, EngineHelpers::PluginChainRole role) { return EngineHelpers::getPluginChainRole(item.desc, item.xmlType) == role; }
+
+juce::File getDraggedBrowserFile(const juce::DragAndDropTarget::SourceDetails &details)
+{
+    if (auto *browser = dynamic_cast<BrowserListBox *>(details.sourceComponent.get()))
+        return browser->getSelectedFile();
+
+    return {};
+}
 
 bool appendFilteredMenuItems(PluginTreeGroup &group, juce::PopupMenu &menu, EngineHelpers::PluginChainRole role, int &nextItemId, std::map<int, PluginTreeItem *> &itemLookup)
 {
@@ -1224,6 +1233,33 @@ void PluginChainView::insertPluginAtVisualIndex(te::Plugin::Ptr plugin, int visu
     }
 }
 
+void PluginChainView::insertSoundFontAtVisualIndex(const juce::File &file, int visualIndex, bool selectInserted)
+{
+    if (auto plugin = EngineHelpers::createSoundFontPlugin(m_evs.m_edit, file))
+    {
+        const auto pluginID = plugin->itemID;
+        insertPluginAtVisualIndex(plugin, visualIndex, selectInserted);
+
+        for (auto *insertedPlugin : m_track->pluginList.getPlugins())
+        {
+            if (insertedPlugin != nullptr && insertedPlugin->itemID == pluginID)
+            {
+                if (auto *soundFontPlugin = dynamic_cast<SoundFontPlugin *>(insertedPlugin))
+                {
+                    if (soundFontPlugin->hasLoadedSoundFont())
+                        return;
+
+                    const auto errorMessage = soundFontPlugin->getLastError();
+                    insertedPlugin->deleteFromParent();
+                    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon, "Failed to load SoundFont", errorMessage.isNotEmpty() ? errorMessage : "The selected SoundFont could not be loaded.");
+                }
+
+                break;
+            }
+        }
+    }
+}
+
 void PluginChainView::valueTreeChildAdded(juce::ValueTree &, juce::ValueTree &c)
 {
     if (c.hasType(te::IDs::PLUGIN))
@@ -1605,6 +1641,9 @@ void PluginChainView::addPluginAtCurrentPosition(EngineHelpers::PluginChainRole 
 
 bool PluginChainView::isInterestedInDragSource(const juce::DragAndDropTarget::SourceDetails &dragSourceDetails)
 {
+    if (dragSourceDetails.description == "FileBrowser" && EngineHelpers::isSoundFontFile(getDraggedBrowserFile(dragSourceDetails)))
+        return true;
+
     if (dragSourceDetails.description == "PluginListEntry" || dragSourceDetails.description == "Instrument or Effect" || dragSourceDetails.description == te::AutomationDragDropTarget::automatableDragString)
     {
         return true;
@@ -1619,6 +1658,9 @@ void PluginChainView::itemDragMove(const SourceDetails &dragSourceDetails)
     {
         m_isOver = true;
     }
+
+    if (dragSourceDetails.description == "FileBrowser" && EngineHelpers::isSoundFontFile(getDraggedBrowserFile(dragSourceDetails)))
+        m_isOver = true;
 
     if (dragSourceDetails.description == te::AutomationDragDropTarget::automatableDragString)
     {
@@ -1641,10 +1683,8 @@ void PluginChainView::itemDropped(const juce::DragAndDropTarget::SourceDetails &
 {
     m_dragSource = nullptr;
 
-    te::Track::Ptr track;
-    if (m_track != nullptr)
-        track = m_track;
-    else
+    te::Track::Ptr track = m_track;
+    if (track == nullptr && details.description != "FileBrowser")
         track = EngineHelpers::addAudioTrack(true, m_evs.m_applicationState.getRandomTrackColour(), m_evs);
 
     if (details.description == "PluginListEntry")
@@ -1684,8 +1724,33 @@ void PluginChainView::itemDropped(const juce::DragAndDropTarget::SourceDetails &
                 }
             }
 
+    if (details.description == "FileBrowser")
+    {
+        const auto draggedFile = getDraggedBrowserFile(details);
+        if (EngineHelpers::isSoundFontFile(draggedFile))
+        {
+            if (m_track != nullptr)
+            {
+                const int endVisualIndex = getRackOrder().size();
+                insertSoundFontAtVisualIndex(draggedFile, endVisualIndex, true);
+            }
+            else
+            {
+                EngineHelpers::addSoundFontTrack(m_evs, draggedFile, m_evs.m_applicationState.getRandomTrackColour());
+            }
+        }
+    }
+
     m_isOver = false;
     repaint();
+}
+
+bool AddButton::isInterestedInDragSource(const SourceDetails &dragSourceDetails)
+{
+    if (dragSourceDetails.description == "FileBrowser" && EngineHelpers::isSoundFontFile(getDraggedBrowserFile(dragSourceDetails)))
+        return true;
+
+    return dragSourceDetails.description == "PluginComp" || dragSourceDetails.description == "PluginListEntry" || dragSourceDetails.description == "Instrument or Effect" || dragSourceDetails.description == te::AutomationDragDropTarget::automatableDragString;
 }
 
 void AddButton::itemDropped(const SourceDetails &dragSourceDetails)
@@ -1712,6 +1777,32 @@ void AddButton::itemDropped(const SourceDetails &dragSourceDetails)
         }
     }
 
+    if (dragSourceDetails.description == "Instrument or Effect")
+    {
+        if (auto *pluginRackComp = findParentComponentOfClass<PluginChainView>())
+            if (auto *lb = dynamic_cast<InstrumentEffectTable *>(dragSourceDetails.sourceComponent.get()))
+                if (auto plugin = lb->getSelectedPlugin(m_track->edit))
+                {
+                    const auto order = pluginRackComp->getRackOrder();
+                    const int targetVisualIndex = getVisualIndexForPluginOrdinal(order, *m_track, getTargetPluginOrdinal());
+                    pluginRackComp->insertPluginAtVisualIndex(plugin, targetVisualIndex, true);
+                }
+    }
+
+    if (dragSourceDetails.description == "FileBrowser")
+    {
+        if (auto *pluginRackComp = findParentComponentOfClass<PluginChainView>())
+        {
+            const auto draggedFile = getDraggedBrowserFile(dragSourceDetails);
+            if (EngineHelpers::isSoundFontFile(draggedFile))
+            {
+                const auto order = pluginRackComp->getRackOrder();
+                const int targetVisualIndex = getVisualIndexForPluginOrdinal(order, *m_track, getTargetPluginOrdinal());
+                pluginRackComp->insertSoundFontAtVisualIndex(draggedFile, targetVisualIndex, true);
+            }
+        }
+    }
+
     if (dragSourceDetails.description == "PluginComp" || dragSourceDetails.description == te::AutomationDragDropTarget::automatableDragString)
     {
         auto pluginRackComp = findParentComponentOfClass<PluginChainView>();
@@ -1726,4 +1817,7 @@ void AddButton::itemDropped(const SourceDetails &dragSourceDetails)
             }
         }
     }
+
+    isOver = false;
+    repaint();
 }

@@ -30,6 +30,17 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 #include "Utilities/ApplicationViewState.h"
 #include "Utilities/Utilities.h"
 
+namespace
+{
+juce::File getDraggedBrowserFile(const juce::DragAndDropTarget::SourceDetails &details)
+{
+    if (auto *browser = dynamic_cast<BrowserListBox *>(details.sourceComponent.get()))
+        return browser->getSelectedFile();
+
+    return {};
+}
+} // namespace
+
 void TrackListView::resized()
 {
     auto &trackHeightManager = m_editViewState.m_trackHeightManager;
@@ -108,6 +119,13 @@ void TrackListView::itemDropped(const juce::DragAndDropTarget::SourceDetails &dr
     if (dragSourceDetails.description == "Track")
         if (auto thc = dynamic_cast<TrackHeaderComponent *>(dragSourceDetails.sourceComponent.get()))
             m_editViewState.m_edit.moveTrack(thc->getTrack(), ip);
+
+    const auto draggedFile = getDraggedBrowserFile(dragSourceDetails);
+    if (dragSourceDetails.description == "FileBrowser" && EngineHelpers::isSoundFontFile(draggedFile))
+    {
+        EngineHelpers::addSoundFontTrack(m_editViewState, draggedFile, m_editViewState.m_applicationState.getRandomTrackColour());
+        return;
+    }
 
     if (dragSourceDetails.description == "PluginListEntry")
     {

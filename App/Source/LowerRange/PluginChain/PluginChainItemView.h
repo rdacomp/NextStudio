@@ -34,6 +34,7 @@ class PluginChainItemView
     : public juce::Component
     , public juce::Button::Listener
     , public te::ParameterisableDragDropSource
+    , public juce::DragAndDropTarget
 {
 public:
     PluginChainItemView(EditViewState &, te::Track::Ptr, te::Plugin::Ptr);
@@ -46,6 +47,11 @@ public:
     void mouseDrag(const juce::MouseEvent &) override;
     void mouseUp(const juce::MouseEvent &) override;
     void mouseDoubleClick(const juce::MouseEvent &) override;
+
+    bool isInterestedInDragSource(const SourceDetails &dragSourceDetails) override;
+    void itemDragMove(const SourceDetails &dragSourceDetails) override;
+    void itemDragExit(const SourceDetails &dragSourceDetails) override;
+    void itemDropped(const SourceDetails &dragSourceDetails) override;
 
     void buttonClicked(juce::Button *button) override;
 
@@ -82,6 +88,7 @@ private:
     BorderlessButton m_showPluginBtn;
     bool m_clickOnHeader{false};
     bool m_collapsed{false};
+    bool m_isFileDropOver{false};
     int m_headerWidth{20};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginChainItemView)

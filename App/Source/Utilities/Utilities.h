@@ -318,6 +318,8 @@ tracktion_engine::FolderTrack::Ptr addFolderTrack(juce::Colour trackColour, Edit
 
 tracktion_engine::AudioTrack::Ptr addAudioTrack(bool isMidiTrack, juce::Colour trackColour, EditViewState &evs);
 
+tracktion_engine::AudioTrack::Ptr addSoundFontTrack(EditViewState &evs, const juce::File &file, juce::Colour trackColour);
+
 te::WaveAudioClip::Ptr loadAudioFileOnNewTrack(EditViewState &evs, const juce::File &file, juce::Colour trackColour, double insertTime = 0.0);
 
 te::WaveAudioClip::Ptr loadAudioFileToTrack(const juce::File &file, te::AudioTrack::Ptr track, te::ClipPosition pos);
@@ -326,9 +328,12 @@ void refreshRelativePathsToNewEditFile(EditViewState &evs, const juce::File &new
 
 void insertPlugin(te::Track::Ptr track, te::Plugin::Ptr plugin, int index = -1);
 
+bool isSoundFontFile(const juce::File &file);
+te::Plugin::Ptr createSoundFontPlugin(te::Edit &edit, const juce::File &file);
+
 // Inserts a plugin and tries to load its 'init' preset if available.
 // Use this for UI interactions where user adds a new plugin.
-PluginInsertResult insertPluginWithPreset(EditViewState &evs, te::Track::Ptr track, te::Plugin::Ptr plugin, int index = -1);
+PluginInsertResult insertPluginWithPreset(EditViewState &evs, te::Track::Ptr track, te::Plugin::Ptr plugin, int index = -1, te::Plugin::Ptr *insertedPlugin = nullptr);
 bool movePluginWithChainRules(te::Track::Ptr track, te::Plugin::Ptr plugin, int requestedIndex);
 PluginChainRole getPluginChainRole(const juce::PluginDescription &desc, const juce::String &xmlType = {});
 PluginChainRole getPluginChainRole(te::Plugin &plugin);

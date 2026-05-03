@@ -42,6 +42,14 @@ template <typename PluginType> PluginType *findLastPluginOfType(te::Track &track
 
 te::LevelMeterPlugin *findLevelMeterPlugin(te::Track &track) { return findLastPluginOfType<te::LevelMeterPlugin>(track); }
 
+juce::File getDraggedBrowserFile(const juce::DragAndDropTarget::SourceDetails &details)
+{
+    if (auto *browser = dynamic_cast<BrowserListBox *>(details.sourceComponent.get()))
+        return browser->getSelectedFile();
+
+    return {};
+}
+
 bool isMasterAutomationParameter(const te::AutomatableParameter::Ptr &ap)
 {
     if (ap == nullptr)
@@ -1045,6 +1053,9 @@ void TrackHeaderComponent::mouseExit(const juce::MouseEvent & /*e*/)
 juce::Colour TrackHeaderComponent::getTrackColour() { return m_track->getColour(); }
 bool TrackHeaderComponent::isInterestedInDragSource(const juce::DragAndDropTarget::SourceDetails &dragSourceDetails)
 {
+    if (dragSourceDetails.description == "FileBrowser" && EngineHelpers::isSoundFontFile(getDraggedBrowserFile(dragSourceDetails)))
+        return true;
+
     if (dragSourceDetails.description == "PluginListEntry" || dragSourceDetails.description == "Track" || dragSourceDetails.description == "Instrument or Effect")
     {
         return true;
@@ -1085,6 +1096,19 @@ void TrackHeaderComponent::itemDropped(const juce::DragAndDropTarget::SourceDeta
             const auto insertResult = EngineHelpers::insertPluginWithPreset(m_editViewState, getTrack(), listbox->getSelectedPlugin(m_editViewState.m_edit));
             if (insertResult != EngineHelpers::PluginInsertResult::inserted)
                 UIHelpers::showPluginInsertBlockedDialog(insertResult);
+        }
+    }
+
+    if (details.description == "FileBrowser")
+    {
+        const auto draggedFile = getDraggedBrowserFile(details);
+        if (EngineHelpers::isSoundFontFile(draggedFile))
+        {
+            EngineHelpers::addSoundFontTrack(m_editViewState, draggedFile, m_editViewState.m_applicationState.getRandomTrackColour());
+            m_contentIsOver = false;
+            m_trackIsOver = false;
+            repaint();
+            return;
         }
     }
 

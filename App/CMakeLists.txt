@@ -59,6 +59,7 @@ if(BUILD_DIR_NAME STREQUAL "jumake_build")
 endif()
 
 target_include_directories(${TargetName} PRIVATE Source)
+target_include_directories(${TargetName} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../modules/tinysoundfont")
 
 if(HAS_RUBBERBAND)
     target_include_directories(${TargetName} PRIVATE
@@ -104,6 +105,8 @@ target_sources(${TargetName} PRIVATE
         Source/Plugins/Reverb/ReverbPluginComponent.cpp
         Source/Plugins/Saturation/NextSaturationPlugin.cpp
         Source/Plugins/Saturation/SaturationPluginComponent.cpp
+        Source/Plugins/SoundFont/SoundFontPlugin.cpp
+        Source/Plugins/SoundFont/SoundFontPluginComponent.cpp
         Source/SideBrowser/InstrumentEffectChooser.cpp
         Source/Plugins/PluginComponent.cpp
         Source/UI/PluginMenu.cpp

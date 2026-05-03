@@ -9,6 +9,7 @@
 */
 
 #include "LowerRange/PluginChain/PresetHelpers.h"
+#include "Plugins/SoundFont/SoundFontPlugin.h"
 #include "Utilities/Utilities.h" // For GUIHelpers logging if needed
 
 namespace PresetHelpers
@@ -34,6 +35,8 @@ juce::String getPluginPresetFolder(te::Plugin &plugin)
         return "Filter";
     if (type == "4osc")
         return "FourOSC";
+    if (type == SoundFontPlugin::xmlTypeName)
+        return "SoundFontPlayer";
 
     // Default fallback
     return "Misc";

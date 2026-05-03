@@ -29,6 +29,7 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 #include "Plugins/Phaser/NextPhaserPlugin.h"
 #include "Plugins/Saturation/NextSaturationPlugin.h"
 #include "Plugins/SimpleSynth/SimpleSynthPlugin.h"
+#include "Plugins/SoundFont/SoundFontPlugin.h"
 #include "Plugins/SpectrumAnalyzer/SpectrumAnalyzerPlugin.h"
 #include "Utilities/Utilities.h"
 #include <utility>
@@ -141,6 +142,7 @@ void PluginTreeGroup::createBuiltInItems(int &num, te::Plugin::Type types)
     {
         addInternalPlugin<te::SamplerPlugin>(*this, num, true);
         addInternalPlugin<te::FourOscPlugin>(*this, num, true);
+        addInternalPlugin<SoundFontPlugin>(*this, num, true);
         addInternalPlugin<SimpleSynthPlugin>(*this, num, true);
     }
 
