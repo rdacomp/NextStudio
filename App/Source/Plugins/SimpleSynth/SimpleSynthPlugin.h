@@ -166,10 +166,10 @@ private:
         juce::Random random;
     };
 
-    void processMidiMessages(te::MidiMessageArray *midiMessages, const juce::ADSR::Parameters &ampParams, const juce::ADSR::Parameters &filterParams);
+    void processMidiMessage(const te::MidiMessageWithSource &message, const juce::ADSR::Parameters &ampParams, const juce::ADSR::Parameters &filterParams);
     void triggerNote(int note, float velocity, int unisonOrder, bool retrigger, float startCutoff, float drive, const juce::ADSR::Parameters &ampParams, const juce::ADSR::Parameters &filterParams);
     void updateVoiceParameters(int unisonOrder, float unisonDetuneCents, float unisonSpread, float resonance, float drive, float coarseTune, float fineTuneCents, float osc2Coarse, float osc2FineCents, const juce::ADSR::Parameters &ampAdsr, const juce::ADSR::Parameters &filterAdsr);
-    void renderAudio(const te::PluginRenderContext &, float baseCutoff, float filterEnvAmount, int waveShape, int unisonOrder, float drive);
+    void renderAudioRange(const te::PluginRenderContext &, int startSample, int numSamples, float baseCutoff, float filterEnvAmount, int waveShape, int unisonOrder, float drive);
 
     inline float generateWaveSample(int waveShape, float phase, float phaseDelta, juce::Random &random);
 

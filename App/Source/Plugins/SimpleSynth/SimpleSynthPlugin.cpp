@@ -329,7 +329,7 @@ void SimpleSynthPlugin::applyToBuffer(const te::PluginRenderContext &fc)
 
     if (!isEnabled())
     {
-        fc.destBuffer->clear();
+        fc.destBuffer->clear(fc.bufferStartSample, fc.bufferNumSamples);
         return;
     }
 
@@ -337,7 +337,7 @@ void SimpleSynthPlugin::applyToBuffer(const te::PluginRenderContext &fc)
     if (sampleRate <= 0.0)
         return;
 
-    fc.destBuffer->clear();
+    fc.destBuffer->clear(fc.bufferStartSample, fc.bufferNumSamples);
 
     // Snapshot parameters at the start of the block for consistency
     // Sanitize inputs immediately to prevent DSP blowups
@@ -386,22 +386,74 @@ void SimpleSynthPlugin::applyToBuffer(const te::PluginRenderContext &fc)
             v.kill();
     }
 
-    // 1. MIDI Processing
-    processMidiMessages(fc.bufferForMidiMessages, adsrParams, filterAdsrParams);
-
-    lastWasPlaying = isPlaying;
-
     if (panicTriggered.exchange(false))
     {
         for (auto &v : voices)
             v.kill();
     }
 
-    // 2. Update Voice Parameters (Control Rate)
-    updateVoiceParameters(unisonOrder, unisonDetuneCents, unisonSpread, resonance, drive, coarseTune, fineTuneCents, osc2Coarse, osc2FineCents, adsrParams, filterAdsrParams);
+    bool voiceParametersDirty = true;
 
-    // 3. Audio Generation & Mixing
-    renderAudio(fc, baseCutoff, filterEnvAmount, waveShape, unisonOrder, drive);
+    auto updateVoiceStateIfNeeded = [&]
+    {
+        if (!voiceParametersDirty)
+            return;
+
+        updateVoiceParameters(unisonOrder, unisonDetuneCents, unisonSpread, resonance, drive, coarseTune, fineTuneCents, osc2Coarse, osc2FineCents, adsrParams, filterAdsrParams);
+        voiceParametersDirty = false;
+    };
+
+    auto renderRange = [&](int startSample, int sampleCount)
+    {
+        if (sampleCount <= 0)
+            return;
+
+        updateVoiceStateIfNeeded();
+        renderAudioRange(fc, startSample, sampleCount, baseCutoff, filterEnvAmount, waveShape, unisonOrder, drive);
+    };
+
+    int renderedSamples = 0;
+
+    if (fc.bufferForMidiMessages != nullptr)
+    {
+        if (fc.bufferForMidiMessages->isAllNotesOff)
+        {
+            for (auto &v : voices)
+                v.kill();
+
+            voiceParametersDirty = true;
+        }
+
+        auto getEventSample = [&](int messageIndex)
+        {
+            const auto eventTimeSeconds = (*fc.bufferForMidiMessages)[messageIndex].getTimeStamp() - fc.midiBufferOffset;
+            return juce::jlimit(0, fc.bufferNumSamples, juce::roundToInt(eventTimeSeconds * sampleRate));
+        };
+
+        for (int messageIndex = 0; messageIndex < fc.bufferForMidiMessages->size();)
+        {
+            const int eventSample = getEventSample(messageIndex);
+
+            if (eventSample > renderedSamples)
+            {
+                renderRange(renderedSamples, eventSample - renderedSamples);
+                renderedSamples = eventSample;
+            }
+
+            do
+            {
+                processMidiMessage((*fc.bufferForMidiMessages)[messageIndex], adsrParams, filterAdsrParams);
+                ++messageIndex;
+            } while (messageIndex < fc.bufferForMidiMessages->size() && getEventSample(messageIndex) == eventSample);
+
+            voiceParametersDirty = true;
+        }
+    }
+
+    if (renderedSamples < fc.bufferNumSamples)
+        renderRange(renderedSamples, fc.bufferNumSamples - renderedSamples);
+
+    lastWasPlaying = isPlaying;
 }
 
 void SimpleSynthPlugin::midiPanic() { panicTriggered = true; }
@@ -441,70 +493,56 @@ SimpleSynthPlugin::Voice *SimpleSynthPlugin::findVoiceToSteal()
     return oldestVoice;
 }
 
-void SimpleSynthPlugin::processMidiMessages(te::MidiMessageArray *midiMessages, const juce::ADSR::Parameters &adsrParams, const juce::ADSR::Parameters &filterAdsrParams)
+void SimpleSynthPlugin::processMidiMessage(const te::MidiMessageWithSource &m, const juce::ADSR::Parameters &adsrParams, const juce::ADSR::Parameters &filterAdsrParams)
 {
-    if (midiMessages == nullptr)
-        return;
-
-    // Check Global Flag from Host
-    if (midiMessages->isAllNotesOff)
-    {
-        for (auto &v : voices)
-            v.kill();
-    }
-
     int unisonOrder = juce::jlimit(1, 5, (int)audioParams.unisonOrder.load());
     bool retrigger = audioParams.retrigger.load() > 0.5f;
     float startCutoff = audioParams.filterCutoff.load();
     float drive = juce::jlimit(1.0f, 10.0f, audioParams.filterDrive.load());
 
-    for (auto m : *midiMessages)
+    if (m.isNoteOff())
     {
-        // Sanitize MIDI data
-        if (m.isNoteOff())
-        {
-            int note = m.getNoteNumber();
+        int note = m.getNoteNumber();
 
+        for (auto &v : voices)
+        {
+            if (v.active && v.currentNote == note && v.isKeyDown)
+                v.stop();
+        }
+    }
+    else if (m.isNoteOn())
+    {
+        int note = juce::jlimit(0, 127, m.getNoteNumber());
+        float velocity = juce::jlimit(0.0f, 1.0f, m.getFloatVelocity());
+
+        if (velocity > 0.0f)
+        {
+            // Increment global note counter for LRU tracking
+            // Wraparound is fine, uint32_t is large enough for years of playing
+            noteCounter++;
+
+            // Unison Logic: Trigger multiple voices
+            triggerNote(note, velocity, unisonOrder, retrigger, startCutoff, drive, adsrParams, filterAdsrParams);
+        }
+        else
+        {
+            // NoteOn with velocity 0 is treated as NoteOff
             for (auto &v : voices)
             {
                 if (v.active && v.currentNote == note && v.isKeyDown)
                     v.stop();
             }
         }
-        else if (m.isNoteOn())
-        {
-            int note = juce::jlimit(0, 127, m.getNoteNumber());
-            float velocity = juce::jlimit(0.0f, 1.0f, m.getFloatVelocity());
-
-            if (velocity > 0.0f)
-            {
-                // Increment global note counter for LRU tracking
-                // Wraparound is fine, uint32_t is large enough for years of playing
-                noteCounter++;
-
-                // Unison Logic: Trigger multiple voices
-                triggerNote(note, velocity, unisonOrder, retrigger, startCutoff, drive, adsrParams, filterAdsrParams);
-            }
-            else
-            {
-                // NoteOn with velocity 0 is treated as NoteOff
-                for (auto &v : voices)
-                {
-                    if (v.active && v.currentNote == note && v.isKeyDown)
-                        v.stop();
-                }
-            }
-        }
-        else if (m.isAllNotesOff())
-        {
-            for (auto &v : voices)
-                v.stop();
-        }
-        else if (m.isAllSoundOff())
-        {
-            for (auto &v : voices)
-                v.kill();
-        }
+    }
+    else if (m.isAllNotesOff())
+    {
+        for (auto &v : voices)
+            v.stop();
+    }
+    else if (m.isAllSoundOff())
+    {
+        for (auto &v : voices)
+            v.kill();
     }
 }
 
@@ -513,13 +551,31 @@ void SimpleSynthPlugin::updateVoiceParameters(int unisonOrder, float unisonDetun
     // Check for Unison Order change
     if (unisonOrder != lastUnisonOrder)
     {
-        std::map<int, float> notesToRetrigger;
+        int notesToRetrigger[numVoices];
+        float velocitiesToRetrigger[numVoices];
+        int notesToRetriggerCount = 0;
 
         for (auto &v : voices)
         {
             if (v.active && v.isKeyDown)
             {
-                notesToRetrigger[v.currentNote] = v.currentVelocity;
+                bool alreadyQueued = false;
+                for (int i = 0; i < notesToRetriggerCount; ++i)
+                {
+                    if (notesToRetrigger[i] == v.currentNote)
+                    {
+                        velocitiesToRetrigger[i] = v.currentVelocity;
+                        alreadyQueued = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyQueued && notesToRetriggerCount < numVoices)
+                {
+                    notesToRetrigger[notesToRetriggerCount] = v.currentNote;
+                    velocitiesToRetrigger[notesToRetriggerCount] = v.currentVelocity;
+                    ++notesToRetriggerCount;
+                }
             }
             // Stop all voices to allow clean re-allocation with new unison count
             if (v.active)
@@ -528,9 +584,9 @@ void SimpleSynthPlugin::updateVoiceParameters(int unisonOrder, float unisonDetun
 
         float startCutoff = audioParams.filterCutoff.load();
         bool retrigger = audioParams.retrigger.load() > 0.5f;
-        for (auto const &[note, vel] : notesToRetrigger)
+        for (int i = 0; i < notesToRetriggerCount; ++i)
         {
-            triggerNote(note, vel, unisonOrder, retrigger, startCutoff, drive, ampAdsr, filterAdsr);
+            triggerNote(notesToRetrigger[i], velocitiesToRetrigger[i], unisonOrder, retrigger, startCutoff, drive, ampAdsr, filterAdsr);
         }
 
         lastUnisonOrder = unisonOrder;
@@ -625,11 +681,10 @@ inline float SimpleSynthPlugin::generateWaveSample(int waveShape, float phase, f
     return sample;
 }
 
-void SimpleSynthPlugin::renderAudio(const te::PluginRenderContext &fc, float baseCutoff, float filterEnvAmount, int waveShape, int unisonOrder, float drive)
+void SimpleSynthPlugin::renderAudioRange(const te::PluginRenderContext &fc, int startSample, int numSamples, float baseCutoff, float filterEnvAmount, int waveShape, int unisonOrder, float drive)
 {
-    float *left = fc.destBuffer->getWritePointer(0);
-    float *right = fc.destBuffer->getWritePointer(1);
-    const int numSamples = fc.bufferNumSamples;
+    float *left = fc.destBuffer->getWritePointer(0, fc.bufferStartSample + startSample);
+    float *right = fc.destBuffer->getWritePointer(1, fc.bufferStartSample + startSample);
 
     masterLevelSmoother.setTargetValue(juce::Decibels::decibelsToGain(audioParams.level.load()));
     cutoffSmoother.setTargetValue(baseCutoff);
@@ -788,7 +843,8 @@ void SimpleSynthPlugin::renderAudio(const te::PluginRenderContext &fc, float bas
                 }
 
                 // Snap to zero to avoid denormals
-                if (std::abs(sample) < 1e-10f) sample = 0.0f;
+                if (std::abs(sample) < 1e-10f)
+                    sample = 0.0f;
 
                 float adsrGain = v.adsr.getNextSample();
                 if (!v.adsr.isActive())
