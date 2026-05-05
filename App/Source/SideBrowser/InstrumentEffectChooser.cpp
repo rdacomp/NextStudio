@@ -31,8 +31,11 @@ InstrumentEffectListModel::InstrumentEffectListModel(tracktion::Engine &engine, 
       m_isInstrumentList(isInstrumentList),
       m_appState(appState)
 {
+    m_knownPlugins.addChangeListener(this);
     updatePluginLists();
 }
+
+InstrumentEffectListModel::~InstrumentEffectListModel() { m_knownPlugins.removeChangeListener(this); }
 
 void InstrumentEffectListModel::updatePluginLists()
 {
@@ -208,6 +211,12 @@ void InstrumentEffectListModel::sortOrderChanged(int newSortColumnId, bool isFor
         jassertfalse;
         break;
     }
+}
+
+void InstrumentEffectListModel::changeListenerCallback(juce::ChangeBroadcaster *source)
+{
+    if (source == &m_knownPlugins)
+        updatePluginLists();
 }
 
 juce::var InstrumentEffectListModel::getDragSourceDescription(const juce::SparseSet<int> & /*rowsToDescribe*/) { return {"Instrument or Effect"}; }

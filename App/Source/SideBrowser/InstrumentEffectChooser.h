@@ -30,6 +30,7 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 class InstrumentEffectListModel
     : public juce::TableListBoxModel
     , public juce::ChangeBroadcaster
+    , public juce::ChangeListener
 {
 public:
     enum column
@@ -39,6 +40,7 @@ public:
     };
 
     InstrumentEffectListModel(te::Engine &engine, bool isInstrumentList, ApplicationViewState &appState);
+    ~InstrumentEffectListModel() override;
 
     void paintRowBackground(juce::Graphics &g, int row, int width, int height, bool rowIsSelected) override;
     void paintCell(juce::Graphics &g, int row, int col, int width, int height, bool rowIsSelected) override;
@@ -62,6 +64,8 @@ public:
     }
 
 private:
+    void changeListenerCallback(juce::ChangeBroadcaster *source) override;
+
     void filterList()
     {
         juce::Array<juce::PluginDescription> &list = m_isInstrumentList ? m_instruments : m_effects;
