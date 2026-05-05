@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../JuceLibraryCode/JuceHeader.h"
+#include "../SideBrowser/PluginBrowser.h"
 #include "../Utilities/ApplicationViewState.h"
 
 class SetupWizard : public juce::Component
@@ -42,6 +43,10 @@ private:
     juce::GroupComponent m_interfaceGroup;
     juce::Label m_guiScaleLabel;
     juce::Slider m_guiScaleSlider;
+
+    // Plugin setup
+    juce::GroupComponent m_pluginGroup;
+    PluginSettings m_pluginSettings;
 
     // Audio setup
     juce::GroupComponent m_audioGroup;

@@ -82,7 +82,8 @@ void SetupWizard::showValidationError(const juce::String &message) const { juce:
 
 SetupWizard::SetupWizard(ApplicationViewState &avs, tracktion::Engine &engine)
     : m_avs(avs),
-      m_engine(engine)
+      m_engine(engine),
+      m_pluginSettings(engine, avs)
 {
     addAndMakeVisible(m_titleLabel);
     m_titleLabel.setText("Welcome to NextStudio", juce::dontSendNotification);
@@ -141,6 +142,11 @@ SetupWizard::SetupWizard(ApplicationViewState &avs, tracktion::Engine &engine)
     m_guiScaleSlider.setMouseDragSensitivity(800);
     m_guiScaleSlider.setValue(juce::jlimit(0.2f, 3.0f, (float)m_avs.m_appScale.get()), juce::dontSendNotification);
     m_guiScaleSlider.onValueChange = [this]() { updateGuiScale(); };
+
+    // Plugin Group
+    addAndMakeVisible(m_pluginGroup);
+    m_pluginGroup.setText("Plug-ins");
+    addAndMakeVisible(m_pluginSettings);
 
     // Audio Group
     addAndMakeVisible(m_audioGroup);
@@ -212,6 +218,9 @@ void SetupWizard::resized()
     auto finishArea = area.removeFromBottom(40);
     area.removeFromBottom(10);
 
+    auto pluginArea = area.removeFromBottom(juce::jmax(260, area.getHeight() / 2));
+    area.removeFromBottom(sectionSpacing);
+
     auto contentArea = area;
     auto leftColumn = contentArea.removeFromLeft((contentArea.getWidth() - columnGap) / 2);
     contentArea.removeFromLeft(columnGap);
@@ -233,6 +242,11 @@ void SetupWizard::resized()
     interfaceContent.removeFromTop(10);
     m_guiScaleLabel.setBounds(interfaceContent.removeFromLeft(120));
     m_guiScaleSlider.setBounds(interfaceContent);
+
+    m_pluginGroup.setBounds(pluginArea);
+    auto pluginContent = pluginArea.reduced(10, 20);
+    pluginContent.removeFromTop(10);
+    m_pluginSettings.setBounds(pluginContent);
 
     // Right column: audio settings.
     m_audioGroup.setBounds(rightColumn);

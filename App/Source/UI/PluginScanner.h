@@ -32,7 +32,7 @@ class PluginScanner
     , public juce::ChangeBroadcaster
 {
 public:
-    PluginScanner(te::Engine &en, juce::AudioPluginFormat &format, const juce::StringArray &filesOrIdentifiers, juce::PropertiesFile *properties, bool allowPluginsWhichRequireAsynchronousInstantiation, int threads, const juce::String &title, const juce::String &text);
+    PluginScanner(te::Engine &en, juce::AudioPluginFormat &format, const juce::StringArray &filesOrIdentifiers, juce::PropertiesFile *properties, bool allowPluginsWhichRequireAsynchronousInstantiation, int threads, const juce::String &title, const juce::String &text, juce::Component *dialogParent = nullptr);
 
     ~PluginScanner() override;
 
@@ -64,6 +64,7 @@ private:
     };
 
     static void startScanCallback(int result, juce::AlertWindow *alert, PluginScanner *scanner);
+    void bringDialogToFront(juce::AlertWindow &window);
     void warnUserAboutStupidPaths();
     static bool isStupidPath(const juce::File &f);
     void startScan();
@@ -77,6 +78,7 @@ private:
     juce::PropertiesFile *m_propertiesToUse;
     juce::AlertWindow m_pathChooserWindow, m_progressWindow;
     juce::FileSearchPathListComponent m_pathList;
+    juce::Component::SafePointer<juce::Component> m_dialogParent;
     juce::String m_pluginBeingScanned;
     double m_progress = 0;
     const int m_numThreads;

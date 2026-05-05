@@ -21,7 +21,7 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 
 #include "UI/PluginScanner.h"
 
-PluginScanner::PluginScanner(tracktion::Engine &en, juce::AudioPluginFormat &format, const juce::StringArray &filesOrIdentifiers, juce::PropertiesFile *properties, bool allowPluginsWhichRequireAsynchronousInstantiation, int threads, const juce::String &title, const juce::String &text)
+PluginScanner::PluginScanner(tracktion::Engine &en, juce::AudioPluginFormat &format, const juce::StringArray &filesOrIdentifiers, juce::PropertiesFile *properties, bool allowPluginsWhichRequireAsynchronousInstantiation, int threads, const juce::String &title, const juce::String &text, juce::Component *dialogParent)
     : m_engine(en),
       m_formatToScan(format),
       m_filesOrIdentifiersToScan(filesOrIdentifiers),
@@ -29,7 +29,8 @@ PluginScanner::PluginScanner(tracktion::Engine &en, juce::AudioPluginFormat &for
       m_pathChooserWindow(TRANS("Select folders to scan..."), juce::String(), juce::MessageBoxIconType::NoIcon),
       m_progressWindow(title, text, juce::MessageBoxIconType::NoIcon),
       m_numThreads(threads),
-      m_allowAsync(allowPluginsWhichRequireAsynchronousInstantiation)
+      m_allowAsync(allowPluginsWhichRequireAsynchronousInstantiation),
+      m_dialogParent(dialogParent)
 {
     const auto blacklisted = m_engine.getPluginManager().knownPluginList.getBlacklistedFiles();
     m_initiallyBlacklistedFiles = std::set<juce::String>(blacklisted.begin(), blacklisted.end());
@@ -56,11 +57,23 @@ PluginScanner::PluginScanner(tracktion::Engine &en, juce::AudioPluginFormat &for
         m_pathChooserWindow.addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
 
         m_pathChooserWindow.enterModalState(true, juce::ModalCallbackFunction::forComponent(startScanCallback, &m_pathChooserWindow, this), false);
+        bringDialogToFront(m_pathChooserWindow);
     }
     else
     {
         startScan();
     }
+}
+
+void PluginScanner::bringDialogToFront(juce::AlertWindow &window)
+{
+    window.setAlwaysOnTop(true);
+
+    if (m_dialogParent != nullptr)
+        window.centreAroundComponent(m_dialogParent.getComponent(), window.getWidth(), window.getHeight());
+
+    window.toFront(true);
+    window.grabKeyboardFocus();
 }
 
 PluginScanner::~PluginScanner()
@@ -117,6 +130,9 @@ void PluginScanner::warnUserAboutStupidPaths()
                                                                               "attempting to load unsuitable files.") +
                                                                             juce::newLine + TRANS("Are you sure you want to scan the folder \"XYZ\"?").replace("XYZ", f),
                                                                         TRANS("Scan"));
+            if (m_dialogParent != nullptr)
+                options = options.withAssociatedComponent(m_dialogParent.getComponent());
+
             m_messageBox = juce::AlertWindow::showScopedAsync(options,
                                                               [this](int result)
                                                               {
@@ -174,6 +190,7 @@ void PluginScanner::startScan()
     m_progressWindow.addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
     m_progressWindow.addProgressBarComponent(m_progress);
     m_progressWindow.enterModalState();
+    bringDialogToFront(m_progressWindow);
 
     if (m_numThreads > 0)
     {

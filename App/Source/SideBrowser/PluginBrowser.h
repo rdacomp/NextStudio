@@ -102,8 +102,8 @@ private:
     PluginListbox m_listbox;
     juce::PropertiesFile *m_propertiesToUse;
     juce::String m_dialogTitle, m_dialogText;
-    bool m_allowAsync;
-    int m_numThreads;
+    bool m_allowAsync = false;
+    int m_numThreads = 0;
     std::unique_ptr<PluginScanner> currentScanner;
     te::Engine &m_engine;
     juce::TextButton m_setupButton;

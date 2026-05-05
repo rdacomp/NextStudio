@@ -195,6 +195,7 @@ PluginSettings::PluginSettings(te::Engine &engine, ApplicationViewState &appStat
 {
     addAndMakeVisible(m_listbox);
     addAndMakeVisible(m_setupButton);
+    m_setupButton.setButtonText(TRANS("Plug-in Actions"));
     juce::TableHeaderComponent &header = m_listbox.getHeader();
 
     header.addColumn(TRANS("Format"), 1, 40, 40, 40, juce::TableHeaderComponent::notResizable);
@@ -220,9 +221,9 @@ PluginSettings::~PluginSettings() { m_engine.getPluginManager().knownPluginList.
 void PluginSettings::resized()
 {
     auto area = getLocalBounds();
-    auto buttonBar = area.removeFromBottom(20);
+    auto buttonBar = area.removeFromBottom(30);
 
-    m_setupButton.setBounds(buttonBar.removeFromLeft(30));
+    m_setupButton.setBounds(buttonBar.removeFromLeft(140));
     m_listbox.setBounds(area);
 }
 
@@ -242,7 +243,10 @@ void PluginSettings::changeListenerCallback(juce::ChangeBroadcaster *source)
     {
         GUIHelpers::log("Liste changed");
         m_listbox.updateContent();
-        getParentComponent()->resized();
+
+        if (isShowing())
+            if (auto *parent = getParentComponent())
+                parent->resized();
     }
 }
 
@@ -374,6 +378,6 @@ void PluginSettings::scanFor(juce::AudioPluginFormat &format, const juce::String
 {
     if (currentScanner != nullptr)
         currentScanner->removeAllChangeListeners();
-    currentScanner.reset(new PluginScanner(m_engine, format, filesOrIdentifiersToScan, m_propertiesToUse, m_allowAsync, m_numThreads, m_dialogTitle.isNotEmpty() ? m_dialogTitle : TRANS("Scanning for plug-ins..."), m_dialogText.isNotEmpty() ? m_dialogText : TRANS("Searching for all possible plug-in files...")));
+    currentScanner.reset(new PluginScanner(m_engine, format, filesOrIdentifiersToScan, m_propertiesToUse, m_allowAsync, m_numThreads, m_dialogTitle.isNotEmpty() ? m_dialogTitle : TRANS("Scanning for plug-ins..."), m_dialogText.isNotEmpty() ? m_dialogText : TRANS("Searching for all possible plug-in files..."), this));
     currentScanner->addChangeListener(this);
 }

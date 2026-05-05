@@ -295,5 +295,8 @@ void InstrumentEffectChooser::changeListenerCallback(juce::ChangeBroadcaster *so
     }
 
     m_listbox.updateContent();
-    getParentComponent()->resized();
+
+    if (isShowing())
+        if (auto *parent = getParentComponent())
+            parent->resized();
 }
