@@ -939,23 +939,86 @@ te::AudioTrack::Ptr EngineHelpers::getAudioTrack(te::Track::Ptr track, EditViewS
     return nullptr;
 }
 
+namespace
+{
+juce::BigInteger getAudibleTracksToRender(te::Edit &edit, const juce::Array<te::Track *> &candidateTracks)
+{
+    juce::BigInteger tracksToDo;
+    const auto areAnyTracksSolo = edit.areAnyTracksSolo();
+    const auto allTracks = te::getAllTracks(edit);
+
+    for (auto *track : candidateTracks)
+    {
+        if (track == nullptr)
+            continue;
+
+        if (areAnyTracksSolo && !(track->isSolo(true) || track->isSoloIsolate(true)))
+            continue;
+
+        if (track->isMuted(true))
+            continue;
+
+        const auto index = allTracks.indexOf(track);
+        if (index != -1)
+            tracksToDo.setBit(index);
+    }
+
+    return tracksToDo;
+}
+
+bool writeSilentRenderFile(const juce::File &renderFile, tracktion::TimeRange range, te::Engine &engine)
+{
+    auto sampleRate = engine.getDeviceManager().getSampleRate();
+    if (sampleRate <= 0.0)
+        sampleRate = 44100.0;
+
+    auto numChannels = 2;
+    if (auto *device = engine.getDeviceManager().deviceManager.getCurrentAudioDevice())
+        numChannels = juce::jmax(1, device->getActiveOutputChannels().countNumberOfSetBits());
+
+    auto outputStream = renderFile.createOutputStream();
+    if (outputStream == nullptr)
+        return false;
+
+    juce::WavAudioFormat wavFormat;
+    std::unique_ptr<juce::AudioFormatWriter> writer(wavFormat.createWriterFor(outputStream.release(), sampleRate, static_cast<unsigned int>(numChannels), 24, {}, 0));
+    if (writer == nullptr)
+        return false;
+
+    const auto totalSamples = static_cast<juce::int64>(juce::jmax(0.0, range.getLength().inSeconds() * sampleRate));
+    juce::AudioBuffer<float> silentBuffer(numChannels, 8192);
+    silentBuffer.clear();
+
+    for (juce::int64 writtenSamples = 0; writtenSamples < totalSamples;)
+    {
+        const auto remainingSamples = totalSamples - writtenSamples;
+        const auto numSamplesThisTime = static_cast<int>(remainingSamples > silentBuffer.getNumSamples() ? silentBuffer.getNumSamples() : remainingSamples);
+        if (!writer->writeFromAudioSampleBuffer(silentBuffer, 0, numSamplesThisTime))
+            return false;
+
+        writtenSamples += numSamplesThisTime;
+    }
+
+    return true;
+}
+} // namespace
+
 bool EngineHelpers::renderToNewTrack(EditViewState &evs, juce::Array<tracktion_engine::Track *> tracksToRender, tracktion::TimeRange range)
 {
     auto sampleDir = juce::File(evs.m_applicationState.m_samplesDir);
     auto renderFile = sampleDir.getNonexistentChildFile("render", ".wav");
 
-    juce::BigInteger tracksToDo{0};
+    const auto tracksToDo = getAudibleTracksToRender(evs.m_edit, tracksToRender);
 
-    auto allTracks = te::getAllTracks(evs.m_edit);
-
-    for (auto *trackToRender : tracksToRender)
+    if (tracksToDo.isZero())
     {
-        int index = allTracks.indexOf(trackToRender);
-        if (index != -1)
-            tracksToDo.setBit(index);
+        if (!writeSilentRenderFile(renderFile, range, evs.m_edit.engine))
+            return false;
     }
-
-    te::Renderer::renderToFile("Render", renderFile, evs.m_edit, range, tracksToDo);
+    else
+    {
+        te::Renderer::renderToFile("Render", renderFile, evs.m_edit, range, tracksToDo);
+    }
 
     EngineHelpers::loadAudioFileOnNewTrack(evs, renderFile, juce::Colours::plum, range.getStart().inSeconds());
 
@@ -999,10 +1062,15 @@ void EngineHelpers::renderEditToFile(EditViewState &evs, juce::File renderFile, 
         return;
     }
 
-    juce::BigInteger tracksToDo{0};
+    const auto tracksToDo = getAudibleTracksToRender(evs.m_edit, te::getAllTracks(evs.m_edit));
 
-    for (auto i = 0; i < te::getAllTracks(evs.m_edit).size(); ++i)
-        tracksToDo.setBit(i);
+    if (tracksToDo.isZero())
+    {
+        if (!writeSilentRenderFile(renderFile, range, evs.m_edit.engine))
+            juce::Logger::writeToLog("Error: Could not create silent render file.");
+
+        return;
+    }
 
     te::Renderer::renderToFile("Render", renderFile, evs.m_edit, range, tracksToDo);
 }
