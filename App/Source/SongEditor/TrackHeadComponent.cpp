@@ -399,15 +399,15 @@ TrackHeaderComponent::~TrackHeaderComponent()
 
 void TrackHeaderComponent::valueTreePropertyChanged(juce::ValueTree &v, const juce::Identifier &i)
 {
-    if (te::TrackList::isTrack(v) || v.hasType(te::IDs::AUTOMATIONCURVE))
+    if (v == m_track->state)
     {
         if (i == te::IDs::mute)
         {
-            m_muteButton.setToggleState((bool)v[i], juce::dontSendNotification);
+            m_muteButton.setToggleState(m_track->isMuted(false), juce::dontSendNotification);
         }
         else if (i == te::IDs::solo)
         {
-            m_soloButton.setToggleState((bool)v[i], juce::dontSendNotification);
+            m_soloButton.setToggleState(m_track->isSolo(false), juce::dontSendNotification);
         }
     }
     if (v.hasType(te::IDs::INPUTDEVICES) || v.hasType(te::IDs::INPUTDEVICE) || v.hasType(te::IDs::INPUTDEVICEDESTINATION))
