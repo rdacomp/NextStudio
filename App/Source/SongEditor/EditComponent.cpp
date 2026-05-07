@@ -332,6 +332,7 @@ void EditComponent::changeListenerCallback(juce::ChangeBroadcaster *source)
     if (source == &m_editViewState.m_selectionManager)
     {
         m_trackListView.repaintTrackHeaders();
+        m_songEditor.repaint();
 
         if (m_masterHeader)
             m_masterHeader->repaint();
@@ -716,11 +717,11 @@ void EditComponent::getCommandInfo(juce::CommandID commandID, juce::ApplicationC
     switch (commandID)
     {
     case KeyPressCommandIDs::duplicateSelectedClips:
-        result.setInfo("Duplicate selected clips", "Duplicate selected clips", "Song Editor", 0);
+        result.setInfo("Duplicate selection", "Duplicate selected time range, clips, or tracks", "Song Editor", 0);
         result.addDefaultKeypress(juce::KeyPress::createFromDescription("d").getKeyCode(), juce::ModifierKeys::commandModifier);
         break;
     case KeyPressCommandIDs::deleteSelectedClips:
-        result.setInfo("Delete selected clips", "Delete selected clips", "Song Editor", 0);
+        result.setInfo("Delete selection", "Delete selected time range, clips, or tracks", "Song Editor", 0);
         result.addDefaultKeypress(juce::KeyPress::backspaceKey, 0);
         result.addDefaultKeypress(juce::KeyPress::deleteKey, 0);
         result.addDefaultKeypress(juce::KeyPress::createFromDescription("x").getKeyCode(), juce::ModifierKeys::commandModifier);
@@ -751,6 +752,43 @@ void EditComponent::getCommandInfo(juce::CommandID commandID, juce::ApplicationC
         break;
     }
 }
+
+bool EditComponent::hasSelectedClips() const
+{
+    return !m_editViewState.m_selectionManager.getItemsOfType<te::Clip>().isEmpty();
+}
+
+bool EditComponent::hasSelectedTracks() const
+{
+    return !m_editViewState.m_selectionManager.getItemsOfType<te::Track>().isEmpty();
+}
+
+void EditComponent::deleteSelectedTracks()
+{
+    auto selectedTracks = m_editViewState.m_selectionManager.getItemsOfType<te::Track>();
+
+    for (auto *track : selectedTracks)
+        m_editViewState.m_edit.deleteTrack(track);
+}
+
+void EditComponent::duplicateSelectedTracks()
+{
+    auto selectedTracks = m_editViewState.m_selectionManager.getItemsOfType<te::Track>();
+
+    if (selectedTracks.isEmpty())
+        return;
+
+    auto trackContent = std::make_unique<te::Clipboard::Tracks>();
+
+    for (auto *track : selectedTracks)
+        trackContent->tracks.push_back(track->state);
+
+    te::EditInsertPoint insertPoint(m_editViewState.m_edit);
+    te::Clipboard::Tracks::EditPastingOptions options(m_editViewState.m_edit, insertPoint, &m_editViewState.m_selectionManager);
+    options.startTrack = selectedTracks.getLast();
+    trackContent->pasteIntoEdit(options);
+}
+
 bool EditComponent::perform(const juce::ApplicationCommandTarget::InvocationInfo &info)
 {
     GUIHelpers::log("EditComponent perform commandID: ", info.commandID);
@@ -766,15 +804,27 @@ bool EditComponent::perform(const juce::ApplicationCommandTarget::InvocationInfo
             GUIHelpers::log("deleteSelectedTimeRange");
             m_songEditor.deleteSelectedTimeRange();
         }
-        else
+        else if (hasSelectedClips())
         {
             GUIHelpers::log("deleteSelectedClips");
             EngineHelpers::deleteSelectedClips(m_editViewState);
         }
+        else if (hasSelectedTracks())
+        {
+            GUIHelpers::log("deleteSelectedTracks");
+            deleteSelectedTracks();
+        }
         break;
     }
     case KeyPressCommandIDs::duplicateSelectedClips:
-        m_songEditor.duplicateSelectedClipsOrTimeRange();
+        if (m_songEditor.getTracksWithSelectedTimeRange().size() > 0 || hasSelectedClips())
+        {
+            m_songEditor.duplicateSelectedClipsOrTimeRange();
+        }
+        else if (hasSelectedTracks())
+        {
+            duplicateSelectedTracks();
+        }
         break;
     case KeyPressCommandIDs::selectAllClips:
         EngineHelpers::selectAllClips(m_editViewState.m_selectionManager, m_editViewState.m_edit);

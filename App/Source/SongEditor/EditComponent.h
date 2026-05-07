@@ -107,6 +107,11 @@ public:
     void updateButtonIcons();
 
 private:
+    bool hasSelectedClips() const;
+    bool hasSelectedTracks() const;
+    void deleteSelectedTracks();
+    void duplicateSelectedTracks();
+
     void timerCallback() override;
     void valueTreeChanged() override {}
     void valueTreePropertyChanged(juce::ValueTree &, const juce::Identifier &) override;

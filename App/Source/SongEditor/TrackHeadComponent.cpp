@@ -74,6 +74,26 @@ bool isMasterAutomationParameter(const te::AutomatableParameter::Ptr &ap)
     return false;
 }
 
+juce::Array<te::Track *> getShownTracksInOrder(EditViewState &evs)
+{
+    juce::Array<te::Track *> tracks;
+
+    for (auto trackID : evs.m_trackHeightManager->getShowedTracks(evs.m_edit))
+        if (auto track = evs.m_trackHeightManager->getTrackFromID(evs.m_edit, trackID))
+            tracks.add(track.get());
+
+    return tracks;
+}
+
+void selectOnlyTracks(te::SelectionManager &selectionManager, const juce::Array<te::Track *> &tracks)
+{
+    selectionManager.deselectAll();
+
+    for (auto *track : tracks)
+        if (track != nullptr)
+            selectionManager.addToSelection(track);
+}
+
 } // namespace
 
 AutomationLaneHeaderComponent::AutomationLaneHeaderComponent(tracktion_engine::AutomatableParameter::Ptr ap, EditViewState &evs)
@@ -925,16 +945,56 @@ void TrackHeaderComponent::mouseDown(const juce::MouseEvent &event)
         }
         else if (event.mods.isShiftDown())
         {
-            if (m_editViewState.m_selectionManager.getNumObjectsSelected())
+            auto &selectionManager = m_editViewState.m_selectionManager;
+            auto selectedTracks = selectionManager.getItemsOfType<te::Track>();
+
+            if (!selectedTracks.isEmpty())
             {
-                m_editViewState.m_selectionManager.addToSelection(m_track);
+                auto shownTracks = getShownTracksInOrder(m_editViewState);
+                auto anchorIndex = shownTracks.indexOf(selectedTracks.getLast());
+                auto clickedIndex = shownTracks.indexOf(m_track.get());
+
+                if (anchorIndex >= 0 && clickedIndex >= 0)
+                {
+                    juce::Array<te::Track *> rangeSelection;
+                    auto startIndex = juce::jmin(anchorIndex, clickedIndex);
+                    auto endIndex = juce::jmax(anchorIndex, clickedIndex);
+
+                    for (int i = startIndex; i <= endIndex; ++i)
+                        rangeSelection.add(shownTracks.getUnchecked(i));
+
+                    selectOnlyTracks(selectionManager, rangeSelection);
+                }
+                else
+                {
+                    selectionManager.selectOnly(m_track);
+                }
+            }
+            else
+            {
+                selectionManager.selectOnly(m_track);
             }
         }
         else if (event.mods.isLeftButtonDown())
         {
             if (event.mods.isCtrlDown())
             {
-                m_editViewState.m_selectionManager.addToSelection(m_track);
+                auto &selectionManager = m_editViewState.m_selectionManager;
+                auto selectedTracks = selectionManager.getItemsOfType<te::Track>();
+                const bool wasSelected = selectionManager.isSelected(m_track);
+
+                selectionManager.deselectAll();
+
+                for (auto *track : selectedTracks)
+                {
+                    if (track == nullptr || track == m_track.get())
+                        continue;
+
+                    selectionManager.addToSelection(track);
+                }
+
+                if (!wasSelected)
+                    selectionManager.addToSelection(m_track);
             }
             else if (event.getNumberOfClicks() > 1)
             {
