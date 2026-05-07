@@ -34,33 +34,13 @@ void ModifierViewComponent::DragHandle::mouseDown(const juce::MouseEvent &e) { t
 
 void ModifierViewComponent::DragHandle::mouseDrag(const juce::MouseEvent &e)
 {
-    if (auto *dragContainer = juce::DragAndDropContainer::findParentDragContainerFor(this))
-    {
-        if (!dragContainer->isDragAndDropActive())
-        {
-            dragContainer->startDragging(te::AutomationDragDropTarget::automatableDragString, this, juce::Image(juce::Image::ARGB, 1, 1, true), false);
-        }
-
-        if (auto *rackView = findParentComponentOfClass<PluginChainView>())
-            rackView->repaint();
-    }
+    if (auto *rackView = findParentComponentOfClass<PluginChainView>())
+        rackView->repaint();
 }
 
 void ModifierViewComponent::DragHandle::mouseUp(const juce::MouseEvent &e)
 {
-    GUIHelpers::log("mouseUP");
     getParentComponent()->repaint();
-
-    if (auto *rackView = findParentComponentOfClass<PluginChainView>())
-    {
-        juce::Component::SafePointer<PluginChainView> safePluginChainView(rackView);
-        juce::MessageManager::callAsync(
-            [safePluginChainView]
-            {
-                if (safePluginChainView != nullptr)
-                    safePluginChainView->clearDragSource();
-            });
-    }
 }
 
 void ModifierViewComponent::DragHandle::draggedOntoAutomatableParameterTarget(const te::AutomatableParameter::Ptr &param)

@@ -311,7 +311,9 @@ void PluginChainItemView::mouseDrag(const juce::MouseEvent &e)
         juce::DragAndDropContainer *dragC = juce::DragAndDropContainer::findParentDragContainerFor(this);
         if (!dragC->isDragAndDropActive())
         {
-            dragC->startDragging("PluginComp", this, juce::Image(juce::Image::ARGB, 1, 1, true), false);
+            auto dragImage = createComponentSnapshot(getLocalBounds());
+            juce::Point<int> imageOffset(-e.getMouseDownX(), -e.getMouseDownY());
+            dragC->startDragging("PluginComp", this, juce::ScaledImage(dragImage), false, &imageOffset, &e.source);
         }
     }
 }

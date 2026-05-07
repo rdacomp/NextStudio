@@ -521,7 +521,7 @@ public:
         {
             m_didDrag = true;
             auto dragImage = createComponentSnapshot(getLocalBounds());
-            container->startDragging("RackPluginListItem", this, dragImage, true);
+            container->startDragging("RackPluginListItem", this, juce::ScaledImage(dragImage), true);
         }
     }
 
