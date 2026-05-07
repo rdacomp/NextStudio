@@ -611,7 +611,6 @@ void MainComponent::changeListenerCallback(juce::ChangeBroadcaster *source)
         else
         {
             setupEdit(juce::File());
-            clearAudioTracks();
         }
     }
 
@@ -779,6 +778,10 @@ void MainComponent::setupEdit(juce::File editFile)
 
     addKeyListener(m_commandManager.getKeyMappings());
     resized();
+
+    // Startup housekeeping should not appear in the user's undo history.
+    m_edit->getUndoManager().clearUndoHistory();
+    m_edit->resetChangedStatus();
 }
 
 void MainComponent::saveSettings()

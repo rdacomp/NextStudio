@@ -33,12 +33,14 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
       m_loopButton("Loop", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
       m_clickButton("Metronome", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
       m_followPlayheadButton("Follow", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
+      m_undoButton("Undo", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
+      m_redoButton("Redo", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
       m_edit(evs.m_edit),
       m_applicationState(applicationState),
       m_commandManager(commandManager),
       m_display(m_edit)
 {
-    Helpers::addAndMakeVisible(*this, {&m_stopButton, &m_playButton, &m_recordButton, &m_display, &m_clickButton, &m_loopButton, &m_followPlayheadButton});
+    Helpers::addAndMakeVisible(*this, {&m_stopButton, &m_playButton, &m_recordButton, &m_display, &m_clickButton, &m_loopButton, &m_followPlayheadButton, &m_undoButton, &m_redoButton});
 
     updateIcons();
 
@@ -48,6 +50,8 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
     m_loopButton.addListener(this);
     m_clickButton.addListener(this);
     m_followPlayheadButton.addListener(this);
+    m_undoButton.addListener(this);
+    m_redoButton.addListener(this);
     m_followPlayheadButton.addMouseListener(this, false);
 
     m_playButton.setTooltip(GUIHelpers::translate("Play", m_editViewState.m_applicationState));
@@ -56,7 +60,10 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
     m_loopButton.setTooltip(GUIHelpers::translate("Toggle loop on/off", m_editViewState.m_applicationState));
     m_clickButton.setTooltip(GUIHelpers::translate("Toggle metronome on/off", m_editViewState.m_applicationState));
     m_followPlayheadButton.setTooltip(GUIHelpers::translate("View follows playhead on/off", m_editViewState.m_applicationState));
+    m_undoButton.setTooltip(GUIHelpers::translate("Undo", m_editViewState.m_applicationState));
+    m_redoButton.setTooltip(GUIHelpers::translate("Redo", m_editViewState.m_applicationState));
 
+    updateUndoRedoButtons();
     startTimer(30);
 }
 
@@ -68,6 +75,8 @@ HeaderComponent::~HeaderComponent()
     m_loopButton.removeListener(this);
     m_clickButton.removeListener(this);
     m_followPlayheadButton.removeListener(this);
+    m_undoButton.removeListener(this);
+    m_redoButton.removeListener(this);
 }
 
 void HeaderComponent::updateIcons()
@@ -80,7 +89,22 @@ void HeaderComponent::updateIcons()
     GUIHelpers::setDrawableOnButton(m_loopButton, BinaryData::cached_svg, m_edit.getTransport().looping ? m_btn_col : juce::Colour(0xff666666));
     GUIHelpers::setDrawableOnButton(m_clickButton, BinaryData::metronome_svg, m_edit.clickTrackEnabled ? m_btn_col : juce::Colour(0xff666666));
     GUIHelpers::setDrawableOnButton(m_followPlayheadButton, BinaryData::follow_svg, m_editViewState.viewFollowsPos() ? m_btn_col : juce::Colour(0xff666666));
+    updateUndoRedoButtons();
 }
+
+void HeaderComponent::updateUndoRedoButtons()
+{
+    auto &undoManager = m_edit.getUndoManager();
+    const auto canUndo = undoManager.canUndo();
+    const auto canRedo = undoManager.canRedo();
+    const auto disabledColour = juce::Colour(0xff666666);
+
+    GUIHelpers::setDrawableOnButton(m_undoButton, BinaryData::undo_svg, canUndo ? m_btn_col : disabledColour);
+    GUIHelpers::setDrawableOnButton(m_redoButton, BinaryData::redo_svg, canRedo ? m_btn_col : disabledColour);
+    m_undoButton.setEnabled(canUndo);
+    m_redoButton.setEnabled(canRedo);
+}
+
 void HeaderComponent::paint(juce::Graphics &g)
 {
     auto area = getLocalBounds();
@@ -96,18 +120,28 @@ void HeaderComponent::resized()
 
     auto transportBox = createFlexBox(juce::FlexBox::JustifyContent::flexEnd);
     auto positionBox = createFlexBox(juce::FlexBox::JustifyContent::center);
-    auto timelineSetBox = createFlexBox(juce::FlexBox::JustifyContent::flexStart);
+    auto timelineSetBox = createFlexBox(juce::FlexBox::JustifyContent::spaceBetween);
+    auto timelineControlsBox = createFlexBox(juce::FlexBox::JustifyContent::flexStart);
+    auto historyBox = createFlexBox(juce::FlexBox::JustifyContent::flexEnd);
 
     auto container = createFlexBox(juce::FlexBox::JustifyContent::spaceBetween);
 
     auto transportButtons = {&m_playButton, &m_stopButton, &m_recordButton};
     auto timeLineButtons = {&m_clickButton, &m_loopButton, &m_followPlayheadButton};
+    auto historyButtons = {&m_undoButton, &m_redoButton};
 
     auto displayWidth = (area.getWidth() / 5) - (getGapSize() * 4);
+    const auto buttonWidth = getButtonSize();
+    const auto gapWidth = getGapSize();
+    const auto timelineControlsWidth = (buttonWidth * 3) + (gapWidth * 6);
+    const auto historyWidth = (buttonWidth * 2) + (gapWidth * 4);
 
     addButtonsToFlexBox(transportBox, transportButtons);
     addButtonsToFlexBox(positionBox, {&m_display}, displayWidth);
-    addButtonsToFlexBox(timelineSetBox, timeLineButtons);
+    addButtonsToFlexBox(timelineControlsBox, timeLineButtons);
+    addButtonsToFlexBox(historyBox, historyButtons);
+    timelineSetBox.items.add(juce::FlexItem((float)timelineControlsWidth, (float)buttonWidth, timelineControlsBox));
+    timelineSetBox.items.add(juce::FlexItem((float)historyWidth, (float)buttonWidth, historyBox));
 
     auto containers = {&transportBox, &positionBox, &timelineSetBox};
     addFlexBoxToFlexBox(container, containers);
@@ -164,6 +198,18 @@ void HeaderComponent::buttonClicked(juce::Button *button)
         m_editViewState.toggleFollowPlayhead();
         updateIcons();
     }
+
+    if (button == &m_undoButton)
+    {
+        m_commandManager.invokeDirectly(KeyPressCommandIDs::undo, true);
+        updateUndoRedoButtons();
+    }
+
+    if (button == &m_redoButton)
+    {
+        m_commandManager.invokeDirectly(KeyPressCommandIDs::redo, true);
+        updateUndoRedoButtons();
+    }
 }
 
 void HeaderComponent::mouseDown(const juce::MouseEvent &e)
@@ -206,7 +252,11 @@ void HeaderComponent::showFollowMenu()
 
 void HeaderComponent::loopButtonClicked() { GUIHelpers::setDrawableOnButton(m_loopButton, BinaryData::cached_svg, m_edit.getTransport().looping ? m_btn_col : juce::Colour(0xff666666)); }
 
-void HeaderComponent::timerCallback() { m_display.update(); }
+void HeaderComponent::timerCallback()
+{
+    m_display.update();
+    updateUndoRedoButtons();
+}
 
 juce::File HeaderComponent::getSelectedFile() const { return m_loadingFile; }
 

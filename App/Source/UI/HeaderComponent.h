@@ -53,6 +53,7 @@ public:
 
 private:
     void showFollowMenu();
+    void updateUndoRedoButtons();
     EditViewState &m_editViewState;
     static juce::FlexBox createFlexBox(juce::FlexBox::JustifyContent justify);
     int getButtonSize();
@@ -60,7 +61,7 @@ private:
 
     void addButtonsToFlexBox(juce::FlexBox &box, const juce::Array<juce::Component *> &buttons, int width = 0);
     void addFlexBoxToFlexBox(juce::FlexBox &target, const juce::Array<juce::FlexBox *> &items);
-    juce::DrawableButton m_stopButton, m_recordButton, m_playButton, m_loopButton, m_clickButton, m_followPlayheadButton;
+    juce::DrawableButton m_stopButton, m_recordButton, m_playButton, m_loopButton, m_clickButton, m_followPlayheadButton, m_undoButton, m_redoButton;
     te::Edit &m_edit;
     ApplicationViewState &m_applicationState;
 
