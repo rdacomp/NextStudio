@@ -39,6 +39,54 @@ juce::File getDraggedBrowserFile(const juce::DragAndDropTarget::SourceDetails &d
 
     return {};
 }
+
+juce::Array<te::Track *> getShownTracksInOrder(EditViewState &evs)
+{
+    juce::Array<te::Track *> tracks;
+
+    for (auto trackID : evs.m_trackHeightManager->getShowedTracks(evs.m_edit))
+        if (auto track = evs.m_trackHeightManager->getTrackFromID(evs.m_edit, trackID))
+            tracks.add(track.get());
+
+    return tracks;
+}
+
+juce::Array<te::Track *> getTracksToMoveInVisualOrder(EditViewState &evs, te::Track *draggedTrack)
+{
+    juce::Array<te::Track *> tracksToMove;
+
+    if (draggedTrack == nullptr)
+        return tracksToMove;
+
+    auto &selectionManager = evs.m_selectionManager;
+    auto selectedTracks = selectionManager.getItemsOfType<te::Track>();
+
+    if (selectionManager.isSelected(draggedTrack) && selectedTracks.size() > 1)
+    {
+        for (auto *track : getShownTracksInOrder(evs))
+            if (selectedTracks.contains(track))
+                tracksToMove.add(track);
+    }
+
+    if (tracksToMove.isEmpty())
+        tracksToMove.add(draggedTrack);
+
+    return tracksToMove;
+}
+
+void moveTracksAsBlock(EditViewState &evs, const juce::Array<te::Track *> &tracksToMove, te::TrackInsertPoint destination)
+{
+    for (int i = tracksToMove.size(); --i >= 0;)
+        if (auto *track = tracksToMove.getUnchecked(i))
+            evs.m_edit.moveTrack(track, destination);
+}
+
+void repaintAllTrackHeaders(juce::OwnedArray<TrackHeaderComponent> &trackHeaders)
+{
+    for (auto *header : trackHeaders)
+        if (header != nullptr)
+            header->repaint();
+}
 } // namespace
 
 void TrackListView::resized()
@@ -118,7 +166,10 @@ void TrackListView::itemDropped(const juce::DragAndDropTarget::SourceDetails &dr
 
     if (dragSourceDetails.description == "Track")
         if (auto thc = dynamic_cast<TrackHeaderComponent *>(dragSourceDetails.sourceComponent.get()))
-            m_editViewState.m_edit.moveTrack(thc->getTrack(), ip);
+        {
+            moveTracksAsBlock(m_editViewState, getTracksToMoveInVisualOrder(m_editViewState, thc->getTrack().get()), ip);
+            repaintAllTrackHeaders(m_trackHeaders);
+        }
 
     const auto draggedFile = getDraggedBrowserFile(dragSourceDetails);
     if (dragSourceDetails.description == "FileBrowser" && EngineHelpers::isSoundFontFile(draggedFile))

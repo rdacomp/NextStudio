@@ -249,6 +249,7 @@ private:
 
     EditViewState &m_editViewState;
     te::Track::Ptr m_track;
+    juce::Point<int> m_mouseDownPos;
     int m_trackHeightATMouseDown{};
     int m_yPosAtMouseDown{};
     juce::ValueTree inputsState;
@@ -258,6 +259,7 @@ private:
     std::unique_ptr<AutomatableSliderComponent> m_volumeKnob;
     std::unique_ptr<LevelMeterComponent> levelMeterComp;
     juce::Image m_dragImage;
+    bool m_pendingSingleClickSelection{false};
     bool m_isResizing{false}, m_isHover{false}, m_contentIsOver{false}, m_trackIsOver{false}, m_isDragging{false}, m_isAudioTrack{false}, m_updateAutomationLanes{false}, m_updateTrackHeight{false};
     void buildAutomationHeader();
     juce::OwnedArray<AutomationLaneHeaderComponent> m_automationHeaders;

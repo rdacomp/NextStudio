@@ -85,6 +85,85 @@ juce::Array<te::Track *> getShownTracksInOrder(EditViewState &evs)
     return tracks;
 }
 
+juce::Array<te::Track *> getTracksToMoveInVisualOrder(EditViewState &evs, te::Track *draggedTrack)
+{
+    juce::Array<te::Track *> tracksToMove;
+
+    if (draggedTrack == nullptr)
+        return tracksToMove;
+
+    auto &selectionManager = evs.m_selectionManager;
+    auto selectedTracks = selectionManager.getItemsOfType<te::Track>();
+
+    if (selectionManager.isSelected(draggedTrack) && selectedTracks.size() > 1)
+    {
+        for (auto *track : getShownTracksInOrder(evs))
+            if (selectedTracks.contains(track))
+                tracksToMove.add(track);
+    }
+
+    if (tracksToMove.isEmpty())
+        tracksToMove.add(draggedTrack);
+
+    return tracksToMove;
+}
+
+void moveTracksAsBlock(EditViewState &evs, const juce::Array<te::Track *> &tracksToMove, te::TrackInsertPoint destination)
+{
+    for (int i = tracksToMove.size(); --i >= 0;)
+        if (auto *track = tracksToMove.getUnchecked(i))
+            evs.m_edit.moveTrack(track, destination);
+}
+
+void repaintAllTrackHeaders(juce::Component *parent)
+{
+    if (parent == nullptr)
+        return;
+
+    for (int i = 0; i < parent->getNumChildComponents(); ++i)
+        if (auto *header = dynamic_cast<TrackHeaderComponent *>(parent->getChildComponent(i)))
+            header->repaint();
+}
+
+juce::Image createTrackDragImage(TrackHeaderComponent &draggedHeader, EditViewState &evs, juce::Point<int> mouseDownPos, juce::Point<int> &imageOffset)
+{
+    auto tracksToMove = getTracksToMoveInVisualOrder(evs, draggedHeader.getTrack().get());
+
+    if (tracksToMove.size() <= 1)
+    {
+        imageOffset = {-mouseDownPos.x, -mouseDownPos.y};
+        return draggedHeader.createComponentSnapshot(draggedHeader.getLocalBounds());
+    }
+
+    auto *parent = draggedHeader.getParentComponent();
+
+    if (parent == nullptr)
+    {
+        imageOffset = {-mouseDownPos.x, -mouseDownPos.y};
+        return draggedHeader.createComponentSnapshot(draggedHeader.getLocalBounds());
+    }
+
+    juce::Rectangle<int> dragBounds;
+
+    for (int i = 0; i < parent->getNumChildComponents(); ++i)
+    {
+        if (auto *header = dynamic_cast<TrackHeaderComponent *>(parent->getChildComponent(i)))
+            if (tracksToMove.contains(header->getTrack().get()))
+                dragBounds = dragBounds.getUnion(header->getBounds());
+    }
+
+    if (dragBounds.isEmpty())
+    {
+        imageOffset = {-mouseDownPos.x, -mouseDownPos.y};
+        return draggedHeader.createComponentSnapshot(draggedHeader.getLocalBounds());
+    }
+
+    imageOffset = {draggedHeader.getX() - dragBounds.getX() - mouseDownPos.x,
+                   draggedHeader.getY() - dragBounds.getY() - mouseDownPos.y};
+
+    return parent->createComponentSnapshot(dragBounds);
+}
+
 void selectOnlyTracks(te::SelectionManager &selectionManager, const juce::Array<te::Track *> &tracks)
 {
     selectionManager.deselectAll();
@@ -925,7 +1004,9 @@ void TrackHeaderComponent::resized()
 
 void TrackHeaderComponent::mouseDown(const juce::MouseEvent &event)
 {
+    m_mouseDownPos = event.getPosition();
     m_trackHeightATMouseDown = m_editViewState.m_trackHeightManager->getTrackHeight(m_track, false);
+    m_pendingSingleClickSelection = false;
 
     m_yPosAtMouseDown = event.y;
     auto area = getLocalBounds().removeFromLeft(20);
@@ -1003,29 +1084,7 @@ void TrackHeaderComponent::mouseDown(const juce::MouseEvent &event)
             }
             else
             {
-                m_editViewState.m_selectionManager.selectOnly(m_track);
-                m_dragImage = createComponentSnapshot(getLocalBounds());
-
-                if (m_editViewState.getLowerRangeView() != LowerRangeView::pluginRack)
-                    m_editViewState.setLowerRangeView(LowerRangeView::pluginRack);
-
-                for (auto t : te::getAllTracks(m_editViewState.m_edit))
-                {
-                    if (t == nullptr)
-                        continue;
-
-                    t->state.setProperty(IDs::showLowerRange, false, nullptr);
-                    if (t == m_track.get())
-                        t->state.setProperty(IDs::showLowerRange, true, nullptr);
-                }
-
-                if (auto *masterTrack = m_editViewState.m_edit.getMasterTrack())
-                {
-                    if (m_track->isMasterTrack())
-                        masterTrack->state.setProperty(IDs::showLowerRange, true, nullptr);
-                    else
-                        masterTrack->state.setProperty(IDs::showLowerRange, false, nullptr);
-                }
+                m_pendingSingleClickSelection = true;
             }
         }
     }
@@ -1055,17 +1114,48 @@ void TrackHeaderComponent::mouseDrag(const juce::MouseEvent &event)
                 return;
 
             juce::DragAndDropContainer *dragC = juce::DragAndDropContainer::findParentDragContainerFor(this);
+            juce::Point<int> imageOffset;
+
+            m_dragImage = createTrackDragImage(*this, m_editViewState, m_mouseDownPos, imageOffset);
 
             if (!dragC->isDragAndDropActive())
-                dragC->startDragging("Track", this, m_dragImage);
+                dragC->startDragging("Track", this, juce::ScaledImage(m_dragImage), false, &imageOffset, &event.source);
 
             m_isDragging = true;
+            m_pendingSingleClickSelection = false;
         }
     }
 }
 
-void TrackHeaderComponent::mouseUp(const juce::MouseEvent & /*e*/)
+void TrackHeaderComponent::mouseUp(const juce::MouseEvent &e)
 {
+    if (m_pendingSingleClickSelection && !e.mouseWasDraggedSinceMouseDown() && e.mods.isLeftButtonDown())
+    {
+        m_editViewState.m_selectionManager.selectOnly(m_track);
+
+        if (m_editViewState.getLowerRangeView() != LowerRangeView::pluginRack)
+            m_editViewState.setLowerRangeView(LowerRangeView::pluginRack);
+
+        for (auto t : te::getAllTracks(m_editViewState.m_edit))
+        {
+            if (t == nullptr)
+                continue;
+
+            t->state.setProperty(IDs::showLowerRange, false, nullptr);
+            if (t == m_track.get())
+                t->state.setProperty(IDs::showLowerRange, true, nullptr);
+        }
+
+        if (auto *masterTrack = m_editViewState.m_edit.getMasterTrack())
+        {
+            if (m_track->isMasterTrack())
+                masterTrack->state.setProperty(IDs::showLowerRange, true, nullptr);
+            else
+                masterTrack->state.setProperty(IDs::showLowerRange, false, nullptr);
+        }
+    }
+
+    m_pendingSingleClickSelection = false;
     m_isResizing = false;
     m_isDragging = false;
 }
@@ -1188,10 +1278,22 @@ void TrackHeaderComponent::itemDropped(const juce::DragAndDropTarget::SourceDeta
 
     if (tc && isTrack)
     {
+        auto tracksToMove = getTracksToMoveInVisualOrder(m_editViewState, tc->getTrack().get());
+
+        if (tracksToMove.contains(m_track.get()))
+        {
+            m_contentIsOver = false;
+            m_trackIsOver = false;
+            repaintAllTrackHeaders(getParentComponent());
+            repaint();
+            return;
+        }
+
         if (isFolderTrack())
             tip = te::TrackInsertPoint(m_track, m_track->getAllSubTracks(false).getLast());
 
-        m_editViewState.m_edit.moveTrack(tc->getTrack(), tip);
+        moveTracksAsBlock(m_editViewState, tracksToMove, tip);
+        repaintAllTrackHeaders(getParentComponent());
     }
 
     m_contentIsOver = false;
