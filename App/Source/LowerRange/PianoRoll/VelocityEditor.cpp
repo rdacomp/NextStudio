@@ -92,7 +92,7 @@ void VelocityEditor::mouseMove(const juce::MouseEvent &e)
     clearNotesFlags();
     if (auto note = getNote(e.position))
     {
-        note->state.setProperty(IDs::isHovered, true, &m_editViewState.m_edit.getUndoManager());
+        note->state.setProperty(IDs::isHovered, true, nullptr);
     }
     repaint();
 }
@@ -129,7 +129,7 @@ void VelocityEditor::drawVelocityRuler(juce::Graphics &g, tracktion_engine::Midi
     g.fillRect(juce::Rectangle<int>(noteRangeX.getStart() - 1, velocityY, 2, getHeight() - velocityY));
     g.setColour(juce::Colour(0xff181818));
     g.fillEllipse(noteRangeX.getStart() - 3, velocityY - 3, 6, 6);
-    if (n->state.getPropertyAsValue(IDs::isHovered, &m_editViewState.m_edit.getUndoManager(), false) == true)
+    if (n->state.getPropertyAsValue(IDs::isHovered, nullptr, false) == true)
     {
         g.setColour(juce::Colours::white);
     }
@@ -179,7 +179,7 @@ void VelocityEditor::clearNotesFlags()
     {
         for (auto n : mc->getSequence().getNotes())
         {
-            n->state.setProperty(IDs::isHovered, false, &m_editViewState.m_edit.getUndoManager());
+            n->state.setProperty(IDs::isHovered, false, nullptr);
         }
     }
 }

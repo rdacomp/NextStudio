@@ -351,7 +351,7 @@ void PluginChainItemView::mouseDoubleClick(const juce::MouseEvent &e)
             if (id.isValid())
             {
                 auto state = m_evs.getTrackPluginChainViewState(m_track->itemID);
-                state.setProperty(getCollapsedStateID(id), m_collapsed, &m_evs.m_edit.getUndoManager());
+                state.setProperty(getCollapsedStateID(id), m_collapsed, nullptr);
             }
         }
 

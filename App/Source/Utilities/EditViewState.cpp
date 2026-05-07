@@ -34,7 +34,8 @@ EditViewState::EditViewState(te::Edit &e, te::SelectionManager &s, ApplicationVi
     m_pluginPresetManagerUIStates = m_state.getOrCreateChildWithName(IDs::pluginPresetManagerUIStates, nullptr);
     m_trackPluginChainViewState = m_state.getOrCreateChildWithName(IDs::trackPluginChainViewState, nullptr);
 
-    auto um = &m_edit.getUndoManager();
+    // View and editor state should persist with the edit, but should not affect the user's undo history.
+    juce::UndoManager *um = nullptr;
 
     m_showGlobalTrack.referTo(m_state, IDs::showGlobalTrack, um, false);
     m_showMarkerTrack.referTo(m_state, IDs::showMarkerTrack, um, false);
@@ -58,7 +59,7 @@ EditViewState::EditViewState(te::Edit &e, te::SelectionManager &s, ApplicationVi
     m_midiEditorHeight.referTo(m_state, IDs::pianorollHeight, um, 400);
     m_lastNoteLength.referTo(m_state, IDs::lastNoteLenght, um, 0);
     m_snapType.referTo(m_state, IDs::snapType, um, 9);
-    m_playHeadStartTime.referTo(m_state, IDs::playHeadStartTime, um, 0.0);
+    m_playHeadStartTime.referTo(m_state, IDs::playHeadStartTime, nullptr, 0.0);
     m_followPlayhead.referTo(m_state, IDs::followsPlayhead, um, true);
     m_followModeVal.referTo(m_state, IDs::followMode, um, 1); // Default to Page (1)
     m_timeLineHeight.referTo(m_state, IDs::timeLineHeight, um, 50);
@@ -101,7 +102,7 @@ juce::ValueTree EditViewState::getTrackPluginChainViewState(te::EditItemID track
 void EditViewState::setTrackSelectedModifier(te::EditItemID trackID, te::EditItemID modifierID)
 {
     auto state = getTrackPluginChainViewState(trackID);
-    state.setProperty(IDs::selectedModifier, modifierID.toString(), &m_edit.getUndoManager());
+    state.setProperty(IDs::selectedModifier, modifierID.toString(), nullptr);
 }
 
 te::EditItemID EditViewState::getTrackSelectedModifier(te::EditItemID trackID)
