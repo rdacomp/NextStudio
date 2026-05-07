@@ -327,6 +327,7 @@ void MainComponent::getCommandInfo(juce::CommandID commandID, juce::ApplicationC
         break;
     case KeyPressCommandIDs::stop:
         result.setInfo("Stop", "Stop", "Transport", 0);
+        result.addDefaultKeypress(juce::KeyPress::spaceKey, juce::ModifierKeys::shiftModifier);
         result.addDefaultKeypress(juce::KeyPress::numberPadDecimalPoint, 0);
         break;
     case KeyPressCommandIDs::loopToggle:
