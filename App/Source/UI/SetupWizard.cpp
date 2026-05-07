@@ -96,6 +96,16 @@ SetupWizard::SetupWizard(ApplicationViewState &avs, tracktion::Engine &engine)
     m_instructionLabel.setText("Please take a moment to configure your initial settings.", juce::dontSendNotification);
     m_instructionLabel.setJustificationType(juce::Justification::centred);
 
+    addAndMakeVisible(m_alphaWarningGroup);
+    m_alphaWarningGroup.setText("Alpha Warning");
+    m_alphaWarningGroup.setColour(juce::GroupComponent::outlineColourId, juce::Colours::orange.withAlpha(0.9f));
+    m_alphaWarningGroup.setColour(juce::GroupComponent::textColourId, juce::Colours::orange.withAlpha(0.95f));
+
+    addAndMakeVisible(m_alphaWarningLabel);
+    m_alphaWarningLabel.setText("Alpha Warning: NextStudio is still in active development. You may encounter bugs, missing features, crashes, or data loss. Functionality may still change significantly, and presets or projects may stop working correctly after future updates until the program reaches a stable state. Use it with caution and keep backups of important work.",
+                                juce::dontSendNotification);
+    m_alphaWarningLabel.setJustificationType(juce::Justification::topLeft);
+
     // Path Group
     addAndMakeVisible(m_pathGroup);
     m_pathGroup.setText("User Content Folder");
@@ -215,6 +225,9 @@ void SetupWizard::resized()
     m_instructionLabel.setBounds(area.removeFromTop(30));
     area.removeFromTop(sectionSpacing);
 
+    auto warningArea = area.removeFromTop(120);
+    area.removeFromTop(sectionSpacing);
+
     auto finishArea = area.removeFromBottom(40);
     area.removeFromBottom(10);
 
@@ -225,6 +238,11 @@ void SetupWizard::resized()
     auto leftColumn = contentArea.removeFromLeft((contentArea.getWidth() - columnGap) / 2);
     contentArea.removeFromLeft(columnGap);
     auto rightColumn = contentArea;
+
+    m_alphaWarningGroup.setBounds(warningArea);
+    auto warningContent = warningArea.reduced(10, 20);
+    warningContent.removeFromTop(10);
+    m_alphaWarningLabel.setBounds(warningContent);
 
     // Left column: non-audio setup sections.
     auto pathArea = leftColumn.removeFromTop(110);

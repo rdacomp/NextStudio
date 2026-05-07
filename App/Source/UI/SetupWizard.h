@@ -34,6 +34,10 @@ private:
     juce::Rectangle<int> m_logoBounds;
     juce::Label m_instructionLabel;
 
+    // Alpha warning
+    juce::GroupComponent m_alphaWarningGroup;
+    juce::Label m_alphaWarningLabel;
+
     // Path selection
     juce::GroupComponent m_pathGroup;
     juce::Label m_currentPathLabel;
