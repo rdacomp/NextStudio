@@ -2,6 +2,15 @@
 
 NextStudio is a Digital Audio Workstation designed for music production, recording, editing, and mixing. Built with JUCE and Tracktion Engine.
 
+## Community
+
+Join the NextStudio community on Discord: [https://discord.gg/yyRzDUhbEB](https://discord.gg/yyRzDUhbEB)
+
+- Get help with issues and bugs
+- Share your music made with NextStudio
+- Request features and discuss ideas
+- Get notified about new releases (Alpha Tester role)
+
 ## Features
 
 - **Multi-Track Recording:** Record multiple audio tracks simultaneously
