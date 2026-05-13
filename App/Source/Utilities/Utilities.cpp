@@ -62,6 +62,59 @@ juce::File Helpers::findRecentEdit(const juce::File &dir)
     }
     return {};
 }
+
+namespace
+{
+bool canDrawAudioClipFades(const juce::Component &parent, const EditViewState &evs, const juce::Rectangle<float> &clipRect)
+{
+    const auto minimizedHeight = static_cast<float>(evs.m_trackHeightManager->getTrackMinimizedHeight());
+    return parent.getHeight() > minimizedHeight && clipRect.getHeight() > minimizedHeight;
+}
+
+void drawAudioClipFades(juce::Graphics &g, EditViewState &evs, te::AudioClipBase &clip, juce::Rectangle<float> clipRect, juce::Rectangle<float> displayedRect, double x1Beat, double x2Beat, juce::Colour clipColour)
+{
+    const auto clipPos = clip.getPosition();
+    const auto clipLength = clipPos.getLength();
+    if (clipLength <= tracktion::TimeDuration())
+        return;
+
+    auto fadeArea = clipRect.withTrimmedTop(static_cast<float>(evs.m_clipHeaderHeight)).reduced(2.0f, 3.0f);
+
+    if (fadeArea.isEmpty() || clipRect.getWidth() < 8.0f)
+        return;
+
+    auto timeToDrawX = [&evs, displayedRect, x1Beat, x2Beat](tracktion::TimePosition time)
+    {
+        return displayedRect.getX() + evs.timeToX(time.inSeconds(), displayedRect.getWidth(), x1Beat, x2Beat);
+    };
+
+    const auto clipStartX = timeToDrawX(clipPos.getStart());
+    const auto clipEndX = timeToDrawX(clipPos.getEnd());
+    const auto fadeInEndX = timeToDrawX(clipPos.getStart() + clip.getFadeIn());
+    const auto fadeOutStartX = timeToDrawX(clipPos.getEnd() - clip.getFadeOut());
+
+    const auto fadeColour = clipColour.contrasting(0.7f).withAlpha(0.75f);
+    const auto handleSize = juce::jlimit(4.0f, 7.0f, clipRect.getWidth() * 0.08f);
+    const auto handleY = fadeArea.getY() + juce::jmin(5.0f, fadeArea.getHeight() * 0.25f);
+
+    g.saveState();
+    g.reduceClipRegion(displayedRect.toNearestInt());
+    g.setColour(fadeColour);
+
+    if (std::abs(fadeInEndX - clipStartX) >= 2.0f)
+        te::AudioFadeCurve::drawFadeCurve(g, clip.getFadeInType(), clipStartX + 2, fadeInEndX + 2, fadeArea.getY(), fadeArea.getBottom(), displayedRect.toNearestInt());
+
+    g.setColour(fadeColour);
+    if (std::abs(clipEndX - fadeOutStartX) >= 2.0f)
+        te::AudioFadeCurve::drawFadeCurve(g, clip.getFadeOutType(), clipEndX - 2, fadeOutStartX - 2, fadeArea.getY(), fadeArea.getBottom(), displayedRect.toNearestInt());
+
+    g.setColour(fadeColour.withAlpha(0.95f));
+    g.fillRect(juce::Rectangle<float>(fadeInEndX, handleY - handleSize, handleSize, handleSize));
+    g.fillRect(juce::Rectangle<float>(fadeOutStartX - handleSize, handleY - handleSize, handleSize, handleSize));
+    g.restoreState();
+}
+} // namespace
+
 void GUIHelpers::drawTrack(juce::Graphics &g, juce::Component &parent, EditViewState &evs, juce::Rectangle<float> displayedRect, te::ClipTrack::Ptr clipTrack, tracktion::TimeRange etr, bool forDragging)
 {
     double x1beats = evs.timeToBeat(etr.getStart().inSeconds());
@@ -129,6 +182,12 @@ void GUIHelpers::drawClip(juce::Graphics &g, juce::Component &parent, EditViewSt
     else if (auto mc = dynamic_cast<te::MidiClip *>(clip))
     {
         drawMidiClip(g, evs, mc, contentRect, displayedRect, color, x1Beat, x2beat);
+    }
+
+    if (auto audioClip = dynamic_cast<te::AudioClipBase *>(clip))
+    {
+        if (canDrawAudioClipFades(parent, evs, clipRect))
+            drawAudioClipFades(g, evs, *audioClip, clipRect, displayedRect, x1Beat, x2beat, color);
     }
 
     g.setColour(evs.m_applicationState.getTimeLineStrokeColour());

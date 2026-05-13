@@ -53,6 +53,8 @@ struct DragState
     bool isLeftEdge{false};
     bool isRightEdge{false};
     bool isTimeStretching{false};
+    bool isFadeIn{false};
+    bool isFadeOut{false};
     bool playheadWasMoved{false};
 
     bool isActive() const { return type != DragType::None; }
@@ -77,6 +79,8 @@ struct DragState
         isLeftEdge = false;
         isRightEdge = false;
         isTimeStretching = false;
+        isFadeIn = false;
+        isFadeOut = false;
         playheadWasMoved = false;
     }
 

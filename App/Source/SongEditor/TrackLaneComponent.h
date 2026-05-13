@@ -54,11 +54,32 @@ public:
     AutomationLaneComponent *getAutomationLane(tracktion::AutomatableParameter::Ptr ap);
 
 private:
+    enum class FadeHitZone
+    {
+        none,
+        fadeInHandle,
+        fadeOutHandle
+    };
+
+    struct ClipHoverState
+    {
+        te::Clip::Ptr clip{nullptr};
+        FadeHitZone fadeZone{FadeHitZone::none};
+        bool leftBorder{false};
+        bool rightBorder{false};
+    };
+
     // Helpers
     float timeToX(tracktion::TimePosition time);
     tracktion::TimePosition xtoTime(int x);
     tracktion::TimePosition getSnappedTime(tracktion::TimePosition time, bool downwards = false);
     juce::Rectangle<float> getClipRect(te::Clip::Ptr clip);
+    ClipHoverState getClipHoverState(juce::Point<float> point, bool allowFadeHandles);
+    FadeHitZone getFadeHitZone(te::Clip::Ptr clip, juce::Point<float> point);
+    bool canUseFadeHandles(const juce::Rectangle<float> &clipRect) const;
+    bool isFadeHandle(FadeHitZone zone) const;
+    bool isFadeZone(FadeHitZone zone) const;
+    void showFadeCurveMenu(te::AudioClipBase::Ptr clip, bool isFadeIn, juce::Point<int> screenPosition);
     void updateCursor(juce::ModifierKeys mods);
 
     EditViewState &m_editViewState;
@@ -71,6 +92,7 @@ private:
     te::Clip::Ptr m_hoveredClip{nullptr};
     bool m_leftBorderHovered{false};
     bool m_rightBorderHovered{false};
+    FadeHitZone m_hoveredFadeZone{FadeHitZone::none};
     te::Clip::Ptr m_pendingCtrlToggleClip{nullptr};
 
     // Note: Dragging state is now managed centrally by SongEditorView via DragState

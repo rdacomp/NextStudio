@@ -137,46 +137,19 @@ void TrackLaneComponent::mouseMove(const juce::MouseEvent &e)
     if (!m_mouseThrottler.shouldProcess(e))
         return;
 
-    auto mousePosTime = xtoTime(e.x);
-    auto toolMode = m_songEditor.getToolMode();
+    const auto toolMode = m_songEditor.getToolMode();
+    const bool allowFadeHandles = toolMode == Tool::pointer || toolMode == Tool::timestretch;
 
-    te::Clip::Ptr hoveredClip = nullptr;
-    bool leftBorderHovered = false;
-    bool rightBorderHovered = false;
     bool needsRepaint = false;
+    auto hoverState = getClipHoverState(e.position, allowFadeHandles);
 
-    // Clip hit test
-    if (auto at = dynamic_cast<te::AudioTrack *>(m_track.get()))
-    {
-        for (auto clip : at->getClips())
-        {
-            if (clip->getEditTimeRange().contains(mousePosTime))
-            {
-                hoveredClip = clip;
-                auto clipRect = getClipRect(clip);
-                auto borderWidth = clipRect.getWidth() > 30 ? 10 : clipRect.getWidth() / 3;
-
-                if (e.getPosition().getX() < clipRect.getX() + borderWidth)
-                {
-                    leftBorderHovered = true;
-                }
-                else if (e.getPosition().getX() > clipRect.getRight() - borderWidth)
-                {
-                    rightBorderHovered = true;
-                }
-                break; // Found the top-most clip
-            }
-        }
-    }
-
-    if (m_hoveredClip != hoveredClip || m_leftBorderHovered != leftBorderHovered || m_rightBorderHovered != rightBorderHovered)
-    {
+    if (m_hoveredClip != hoverState.clip || m_leftBorderHovered != hoverState.leftBorder || m_rightBorderHovered != hoverState.rightBorder || m_hoveredFadeZone != hoverState.fadeZone)
         needsRepaint = true;
-    }
 
-    m_hoveredClip = hoveredClip;
-    m_leftBorderHovered = leftBorderHovered;
-    m_rightBorderHovered = rightBorderHovered;
+    m_hoveredClip = hoverState.clip;
+    m_leftBorderHovered = hoverState.leftBorder;
+    m_rightBorderHovered = hoverState.rightBorder;
+    m_hoveredFadeZone = hoverState.fadeZone;
 
     updateCursor(e.mods);
 
@@ -191,6 +164,7 @@ void TrackLaneComponent::mouseExit(const juce::MouseEvent &e)
         m_hoveredClip = nullptr;
         m_leftBorderHovered = false;
         m_rightBorderHovered = false;
+        m_hoveredFadeZone = FadeHitZone::none;
         repaint();
     }
     setMouseCursor(juce::MouseCursor::NormalCursor);
@@ -203,16 +177,44 @@ void TrackLaneComponent::mouseDown(const juce::MouseEvent &e)
 {
     ScopedSaveLock saveLock(m_editViewState);
     auto &sm = m_editViewState.m_selectionManager;
-    auto toolMode = m_songEditor.getToolMode();
+    const auto toolMode = m_songEditor.getToolMode();
+    const bool allowFadeHandles = toolMode == Tool::pointer || toolMode == Tool::timestretch;
 
     bool leftButton = e.mods.isLeftButtonDown();
+    bool rightButton = e.mods.isRightButtonDown();
+    auto hoverState = getClipHoverState(e.position, allowFadeHandles);
+    m_hoveredClip = hoverState.clip;
+    m_leftBorderHovered = hoverState.leftBorder;
+    m_rightBorderHovered = hoverState.rightBorder;
+    m_hoveredFadeZone = hoverState.fadeZone;
     bool isClipClicked = m_hoveredClip != nullptr;
 
     // 1. Clip Interaction
+    if (isClipClicked && rightButton && isFadeZone(m_hoveredFadeZone))
+    {
+        if (auto audioClip = te::AudioClipBase::Ptr(dynamic_cast<te::AudioClipBase *>(m_hoveredClip.get())))
+        {
+            showFadeCurveMenu(audioClip, m_hoveredFadeZone == FadeHitZone::fadeInHandle, e.getScreenPosition());
+            return;
+        }
+    }
+
     if (isClipClicked && leftButton)
     {
         if (toolMode == Tool::pointer || toolMode == Tool::timestretch)
         {
+            if (auto audioClip = te::AudioClipBase::Ptr(dynamic_cast<te::AudioClipBase *>(m_hoveredClip.get())); audioClip != nullptr && isFadeHandle(m_hoveredFadeZone))
+            {
+                m_songEditor.startDrag(DragType::Clip, xtoTime(e.x), e.getPosition(), m_hoveredClip->itemID);
+                auto &dragState = m_songEditor.getDragState();
+                dragState.draggedClip = m_hoveredClip;
+                dragState.isFadeIn = m_hoveredFadeZone == FadeHitZone::fadeInHandle;
+                dragState.isFadeOut = m_hoveredFadeZone == FadeHitZone::fadeOutHandle;
+                audioClip->setAutoCrossfade(false);
+                repaint();
+                return;
+            }
+
             // Double Click -> Piano Roll
             if ((e.getNumberOfClicks() > 1 || m_editViewState.getLowerRangeView() == LowerRangeView::midiEditor) && m_hoveredClip->isMidi())
             {
@@ -301,11 +303,38 @@ void TrackLaneComponent::mouseDown(const juce::MouseEvent &e)
 void TrackLaneComponent::mouseDrag(const juce::MouseEvent &e)
 {
     auto toolMode = m_songEditor.getToolMode();
-    auto &sm = m_editViewState.m_selectionManager;
     auto &dragState = m_songEditor.getDragState();
 
     if (dragState.draggedClip && (toolMode == Tool::pointer || toolMode == Tool::timestretch))
     {
+        if (dragState.isFadeIn || dragState.isFadeOut)
+        {
+            if (auto audioClip = te::AudioClipBase::Ptr(dynamic_cast<te::AudioClipBase *>(dragState.draggedClip.get())))
+            {
+                const auto clipPos = audioClip->getPosition();
+                const auto clipLength = clipPos.getLength();
+                const auto mouseTime = xtoTime(e.x);
+
+                if (dragState.isFadeIn)
+                {
+                    auto fadeLength = mouseTime - clipPos.getStart();
+                    fadeLength = juce::jlimit(tracktion::TimeDuration(), clipLength, fadeLength);
+                    audioClip->setFadeIn(fadeLength);
+                }
+                else if (dragState.isFadeOut)
+                {
+                    auto fadeLength = clipPos.getEnd() - mouseTime;
+                    fadeLength = juce::jlimit(tracktion::TimeDuration(), clipLength, fadeLength);
+                    audioClip->setFadeOut(fadeLength);
+                }
+
+                repaint();
+                m_songEditor.repaint();
+            }
+
+            return;
+        }
+
         auto draggedTime = xtoTime(e.getDistanceFromDragStartX()) - xtoTime(0);
         auto startTime = dragState.draggedClip->getPosition().getStart();
         if (dragState.isRightEdge)
@@ -338,6 +367,16 @@ void TrackLaneComponent::mouseUp(const juce::MouseEvent &e)
 
     if (dragState.isClipDrag() && dragState.draggedClip)
     {
+        if (dragState.isFadeIn || dragState.isFadeOut)
+        {
+            m_pendingCtrlToggleClip = nullptr;
+            m_songEditor.endDrag();
+            m_songEditor.updateDragGhost(nullptr, {}, 0);
+            m_songEditor.repaint();
+            repaint();
+            return;
+        }
+
         // Finalize Move/Resize
         auto globalEvent = e.getEventRelativeTo(&m_songEditor);
         int verticalOffset = m_songEditor.getVerticalOffset(m_track, globalEvent.position.toInt());
@@ -406,6 +445,128 @@ tracktion::TimePosition TrackLaneComponent::xtoTime(int x) { return TimeUtils::x
 
 tracktion::TimePosition TrackLaneComponent::getSnappedTime(tracktion::TimePosition time, bool downwards) { return TimeUtils::getSnappedTime(time, m_editViewState, m_timeLineID, getWidth(), downwards); }
 
+TrackLaneComponent::ClipHoverState TrackLaneComponent::getClipHoverState(juce::Point<float> point, bool allowFadeHandles)
+{
+    ClipHoverState result;
+    const auto mousePosTime = xtoTime(juce::roundToInt(point.x));
+
+    if (auto at = dynamic_cast<te::AudioTrack *>(m_track.get()))
+    {
+        for (auto clip : at->getClips())
+        {
+            if (!clip->getEditTimeRange().contains(mousePosTime))
+                continue;
+
+            result.clip = clip;
+            if (allowFadeHandles)
+                result.fadeZone = getFadeHitZone(clip, point);
+
+            if (!isFadeZone(result.fadeZone))
+            {
+                auto clipRect = getClipRect(clip);
+                auto borderWidth = clipRect.getWidth() > 30.0f ? 10.0f : clipRect.getWidth() / 3.0f;
+
+                if (point.x < clipRect.getX() + borderWidth)
+                    result.leftBorder = true;
+                else if (point.x > clipRect.getRight() - borderWidth)
+                    result.rightBorder = true;
+            }
+
+            break;
+        }
+    }
+
+    return result;
+}
+
+TrackLaneComponent::FadeHitZone TrackLaneComponent::getFadeHitZone(te::Clip::Ptr clip, juce::Point<float> point)
+{
+    auto audioClip = te::AudioClipBase::Ptr(dynamic_cast<te::AudioClipBase *>(clip.get()));
+    if (audioClip == nullptr)
+        return FadeHitZone::none;
+
+    const auto clipRect = getClipRect(clip);
+    if (!canUseFadeHandles(clipRect) || !clipRect.contains(point))
+        return FadeHitZone::none;
+
+    auto fadeArea = clipRect.withTrimmedTop(static_cast<float>(m_editViewState.m_clipHeaderHeight)).reduced(2.0f, 3.0f);
+
+    if (fadeArea.isEmpty())
+        return FadeHitZone::none;
+
+    const auto clipPos = audioClip->getPosition();
+    const auto fadeInEndX = timeToX(clipPos.getStart() + audioClip->getFadeIn());
+    const auto fadeOutStartX = timeToX(clipPos.getEnd() - audioClip->getFadeOut());
+    const auto handleSize = juce::jlimit(6.0f, 12.0f, clipRect.getWidth() * 0.18f);
+    const auto handleY = fadeArea.getY() + juce::jmin(5.0f, fadeArea.getHeight() * 0.25f);
+
+    auto fadeInHandle = juce::Rectangle<float>(fadeInEndX, handleY - handleSize, handleSize, handleSize).expanded(2.0f);
+    auto fadeOutHandle = juce::Rectangle<float>(fadeOutStartX - handleSize, handleY - handleSize, handleSize, handleSize).expanded(2.0f);
+
+    if (fadeInHandle.contains(point))
+        return FadeHitZone::fadeInHandle;
+
+    if (fadeOutHandle.contains(point))
+        return FadeHitZone::fadeOutHandle;
+
+    return FadeHitZone::none;
+}
+
+bool TrackLaneComponent::canUseFadeHandles(const juce::Rectangle<float> &clipRect) const
+{
+    const auto minimizedHeight = static_cast<float>(m_editViewState.m_trackHeightManager->getTrackMinimizedHeight());
+    return getHeight() > minimizedHeight && clipRect.getHeight() > minimizedHeight;
+}
+
+bool TrackLaneComponent::isFadeHandle(FadeHitZone zone) const
+{
+    return zone == FadeHitZone::fadeInHandle || zone == FadeHitZone::fadeOutHandle;
+}
+
+bool TrackLaneComponent::isFadeZone(FadeHitZone zone) const
+{
+    return zone != FadeHitZone::none;
+}
+
+void TrackLaneComponent::showFadeCurveMenu(te::AudioClipBase::Ptr clip, bool isFadeIn, juce::Point<int> screenPosition)
+{
+    if (clip == nullptr)
+        return;
+
+    const auto currentType = isFadeIn ? clip->getFadeInType() : clip->getFadeOutType();
+
+    juce::PopupMenu menu;
+    menu.addItem(1, "Linear", true, currentType == te::AudioFadeCurve::linear);
+    menu.addItem(2, "Convex", true, currentType == te::AudioFadeCurve::convex);
+    menu.addItem(3, "Concave", true, currentType == te::AudioFadeCurve::concave);
+    menu.addItem(4, "S-Curve", true, currentType == te::AudioFadeCurve::sCurve);
+
+    juce::Component::SafePointer<TrackLaneComponent> safeThis(this);
+    const auto targetArea = juce::Rectangle<int>(screenPosition.x, screenPosition.y, 1, 1);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(targetArea), [safeThis, clip, isFadeIn](int result)
+    {
+        if (safeThis == nullptr || result == 0 || clip == nullptr)
+            return;
+
+        auto type = te::AudioFadeCurve::linear;
+        if (result == 2)
+            type = te::AudioFadeCurve::convex;
+        else if (result == 3)
+            type = te::AudioFadeCurve::concave;
+        else if (result == 4)
+            type = te::AudioFadeCurve::sCurve;
+
+        ScopedSaveLock saveLock(safeThis->m_editViewState);
+
+        if (isFadeIn)
+            clip->setFadeInType(type);
+        else
+            clip->setFadeOutType(type);
+
+        safeThis->repaint();
+    });
+}
+
 juce::Rectangle<float> TrackLaneComponent::getClipRect(te::Clip::Ptr clip)
 {
     float x = timeToX(clip->getPosition().getStart());
@@ -425,11 +586,16 @@ void TrackLaneComponent::updateCursor(juce::ModifierKeys modifierKeys)
     auto shiftRightcursor = GUIHelpers::createCustomMouseCursor(GUIHelpers::CustomMouseCursor::ShiftRight, m_editViewState.m_applicationState.m_mouseCursorScale);
     auto shiftLeftcursor = GUIHelpers::createCustomMouseCursor(GUIHelpers::CustomMouseCursor::ShiftLeft, m_editViewState.m_applicationState.m_mouseCursorScale);
     auto shiftHandCursor = GUIHelpers::createCustomMouseCursor(GUIHelpers::CustomMouseCursor::ShiftHand, m_editViewState.m_applicationState.m_mouseCursorScale);
+    auto curveCursor = GUIHelpers::createCustomMouseCursor(GUIHelpers::CustomMouseCursor::CurveSteepnes, m_editViewState.m_applicationState.m_mouseCursorScale);
 
     // Clip cursor handling
     if (m_hoveredClip != nullptr && (toolMode == Tool::pointer || toolMode == Tool::timestretch))
     {
-        if (m_leftBorderHovered)
+        if (isFadeZone(m_hoveredFadeZone))
+        {
+            setMouseCursor(curveCursor);
+        }
+        else if (m_leftBorderHovered)
         {
             setMouseCursor(shiftLeftcursor);
         }
