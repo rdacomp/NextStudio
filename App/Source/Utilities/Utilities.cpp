@@ -2080,6 +2080,8 @@ void EngineHelpers::play(EditViewState &evs)
 void EngineHelpers::stopPlay(EditViewState &evs)
 {
     auto &transport = evs.m_edit.getTransport();
+    evs.clearRecordCountIn();
+
     if (!transport.isPlaying())
     {
         evs.m_playHeadStartTime = 0.0;
@@ -2101,6 +2103,7 @@ void EngineHelpers::togglePlay(EditViewState &evs)
 
     if (transport.isPlaying())
     {
+        evs.clearRecordCountIn();
         transport.stop(false, false);
     }
     else
@@ -2186,14 +2189,20 @@ void EngineHelpers::toggleMetronome(te::Edit &edit)
     edit.clickTrackEnabled = !edit.clickTrackEnabled;
 }
 
-void EngineHelpers::toggleRecord(tracktion_engine::Edit &edit)
+void EngineHelpers::toggleRecord(EditViewState &evs)
 {
-    auto &transport = edit.getTransport();
+    auto &transport = evs.m_edit.getTransport();
 
     if (transport.isRecording())
+    {
+        evs.clearRecordCountIn();
         transport.stop(true, false);
+    }
     else
+    {
+        evs.beginRecordCountIn();
         transport.record(false);
+    }
 }
 
 void EngineHelpers::armTrack(te::AudioTrack &t, bool arm, int position)

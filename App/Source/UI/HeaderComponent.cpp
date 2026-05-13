@@ -21,7 +21,6 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 */
 
 #include "UI/HeaderComponent.h"
-#include "SideBrowser/RenderDialog.h"
 #include "Utilities/Utilities.h"
 
 HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &applicationState, juce::ApplicationCommandManager &commandManager)
@@ -40,13 +39,14 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
       m_commandManager(commandManager),
       m_display(m_edit)
 {
-    Helpers::addAndMakeVisible(*this, {&m_stopButton, &m_playButton, &m_recordButton, &m_display, &m_clickButton, &m_loopButton, &m_followPlayheadButton, &m_undoButton, &m_redoButton});
+    Helpers::addAndMakeVisible(*this, {&m_stopButton, &m_playButton, &m_recordButton, &m_countInButton, &m_display, &m_clickButton, &m_loopButton, &m_followPlayheadButton, &m_undoButton, &m_redoButton});
 
     updateIcons();
 
     m_playButton.addListener(this);
     m_stopButton.addListener(this);
     m_recordButton.addListener(this);
+    m_countInButton.addListener(this);
     m_loopButton.addListener(this);
     m_clickButton.addListener(this);
     m_followPlayheadButton.addListener(this);
@@ -63,7 +63,9 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
     m_undoButton.setTooltip(GUIHelpers::translate("Undo", m_editViewState.m_applicationState));
     m_redoButton.setTooltip(GUIHelpers::translate("Redo", m_editViewState.m_applicationState));
 
+    updateCountInButton();
     updateUndoRedoButtons();
+    updateCountInDisplay();
     startTimer(30);
 }
 
@@ -72,6 +74,7 @@ HeaderComponent::~HeaderComponent()
     m_playButton.removeListener(this);
     m_stopButton.removeListener(this);
     m_recordButton.removeListener(this);
+    m_countInButton.removeListener(this);
     m_loopButton.removeListener(this);
     m_clickButton.removeListener(this);
     m_followPlayheadButton.removeListener(this);
@@ -89,6 +92,7 @@ void HeaderComponent::updateIcons()
     GUIHelpers::setDrawableOnButton(m_loopButton, BinaryData::cached_svg, m_edit.getTransport().looping ? m_btn_col : juce::Colour(0xff666666));
     GUIHelpers::setDrawableOnButton(m_clickButton, BinaryData::metronome_svg, m_edit.clickTrackEnabled ? m_btn_col : juce::Colour(0xff666666));
     GUIHelpers::setDrawableOnButton(m_followPlayheadButton, BinaryData::follow_svg, m_editViewState.viewFollowsPos() ? m_btn_col : juce::Colour(0xff666666));
+    updateCountInButton();
     updateUndoRedoButtons();
 }
 
@@ -137,6 +141,7 @@ void HeaderComponent::resized()
     const auto historyWidth = (buttonWidth * 2) + (gapWidth * 4);
 
     addButtonsToFlexBox(transportBox, transportButtons);
+    addButtonsToFlexBox(transportBox, {&m_countInButton});
     addButtonsToFlexBox(positionBox, {&m_display}, displayWidth);
     addButtonsToFlexBox(timelineControlsBox, timeLineButtons);
     addButtonsToFlexBox(historyBox, historyButtons);
@@ -176,11 +181,18 @@ void HeaderComponent::buttonClicked(juce::Button *button)
     if (button == &m_recordButton)
     {
         bool wasRecording = m_edit.getTransport().isRecording();
-        EngineHelpers::toggleRecord(m_edit);
+        EngineHelpers::toggleRecord(m_editViewState);
         if (wasRecording)
         {
             te::EditFileOperations(m_edit).save(true, true, false);
         }
+
+        updateCountInDisplay();
+    }
+    if (button == &m_countInButton)
+    {
+        if (!m_editViewState.isRecordCountingIn())
+            showCountInMenu();
     }
     if (button == &m_loopButton)
     {
@@ -210,6 +222,50 @@ void HeaderComponent::buttonClicked(juce::Button *button)
         m_commandManager.invokeDirectly(KeyPressCommandIDs::redo, true);
         updateUndoRedoButtons();
     }
+}
+
+juce::String HeaderComponent::getCountInModeText() const
+{
+    switch (m_edit.getCountInMode())
+    {
+        case te::Edit::CountIn::none:    return "Off";
+        case te::Edit::CountIn::oneBeat: return "1 Beat";
+        case te::Edit::CountIn::twoBeat: return "2 Beats";
+        case te::Edit::CountIn::oneBar:  return "1 Bar";
+        case te::Edit::CountIn::twoBar:  return "2 Bars";
+        default:                         break;
+    }
+
+    return "Off";
+}
+
+void HeaderComponent::showCountInMenu()
+{
+    juce::PopupMenu m;
+    const auto currentMode = m_edit.getCountInMode();
+
+    m.addItem(1, "Off", true, currentMode == te::Edit::CountIn::none);
+    m.addSeparator();
+    m.addItem(2, "1 Beat", true, currentMode == te::Edit::CountIn::oneBeat);
+    m.addItem(3, "2 Beats", true, currentMode == te::Edit::CountIn::twoBeat);
+    m.addItem(4, "1 Bar", true, currentMode == te::Edit::CountIn::oneBar);
+    m.addItem(5, "2 Bars", true, currentMode == te::Edit::CountIn::twoBar);
+
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&m_countInButton),
+                    [this](int result)
+                    {
+                        switch (result)
+                        {
+                            case 1: m_edit.setCountInMode(te::Edit::CountIn::none); break;
+                            case 2: m_edit.setCountInMode(te::Edit::CountIn::oneBeat); break;
+                            case 3: m_edit.setCountInMode(te::Edit::CountIn::twoBeat); break;
+                            case 4: m_edit.setCountInMode(te::Edit::CountIn::oneBar); break;
+                            case 5: m_edit.setCountInMode(te::Edit::CountIn::twoBar); break;
+                            default: return;
+                        }
+
+                        updateCountInButton();
+                    });
 }
 
 void HeaderComponent::mouseDown(const juce::MouseEvent &e)
@@ -252,9 +308,24 @@ void HeaderComponent::showFollowMenu()
 
 void HeaderComponent::loopButtonClicked() { GUIHelpers::setDrawableOnButton(m_loopButton, BinaryData::cached_svg, m_edit.getTransport().looping ? m_btn_col : juce::Colour(0xff666666)); }
 
+void HeaderComponent::updateCountInButton()
+{
+    const auto enabledColour = m_edit.getCountInMode() == te::Edit::CountIn::none ? juce::Colour(0xff666666) : m_btn_col;
+    GUIHelpers::setDrawableOnButton(m_countInButton, BinaryData::preroll_svg, enabledColour);
+    m_countInButton.setTooltip(GUIHelpers::translate("Pre-Roll Counter", m_editViewState.m_applicationState) + ": " + getCountInModeText());
+}
+
+void HeaderComponent::updateCountInDisplay()
+{
+    const auto displayText = m_editViewState.getRecordCountInText();
+    m_countInButton.setCounterText(displayText);
+    m_countInButton.setCounterActive(displayText.isNotEmpty());
+}
+
 void HeaderComponent::timerCallback()
 {
     m_display.update();
+    updateCountInDisplay();
     updateUndoRedoButtons();
 }
 

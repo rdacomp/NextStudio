@@ -21,6 +21,7 @@ juce_add_binary_data(Pictures SOURCES
     arrowdown18.svg
     automation.svg
     follow.svg
+    preroll.svg
     folderopen.svg
     folderclosed.svg
     expandPluginPlain18.svg

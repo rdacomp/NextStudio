@@ -243,6 +243,12 @@ public:
     FollowMode getFollowMode() const;
     void updatePositionFollower(juce::String timeLineID, int width);
 
+    void beginRecordCountIn();
+    void clearRecordCountIn();
+    bool isRecordCountingIn();
+    int getRecordCountInBeatsRemaining();
+    juce::String getRecordCountInText();
+
     SimpleThumbnail *getOrCreateThumbnail(te::WaveAudioClip::Ptr wac);
     void clearThumbnails();
     void removeThumbnail(te::EditItemID id);
@@ -270,10 +276,20 @@ public:
     ApplicationViewState &m_applicationState;
 
 private:
+    struct RecordCountInState
+    {
+        bool active = false;
+        tracktion::TimePosition punchInTime{};
+        tracktion::TimePosition visibleStartTime{};
+    };
+
+    void updateRecordCountIn();
+
     double m_targetViewX = -1.0;
     double m_scrollStartViewX = 0.0;
     double m_scrollProgress = 0.0;
     bool m_isScrolling = false;
+    RecordCountInState m_recordCountIn;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EditViewState)
 };

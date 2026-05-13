@@ -370,7 +370,7 @@ void loopAroundAll(te::Edit &edit);
 void toggleSnap(EditViewState &evs);
 void toggleMetronome(te::Edit &edit);
 
-void toggleRecord(te::Edit &edit);
+void toggleRecord(EditViewState &evs);
 void armTrack(te::AudioTrack &t, bool arm, int position = 0);
 bool isTrackArmed(te::AudioTrack &t, int position = 0);
 bool isInputMonitoringEnabled(te::AudioTrack &t, int position = 0);

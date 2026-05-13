@@ -511,7 +511,7 @@ bool MainComponent::perform(const juce::ApplicationCommandTarget::InvocationInfo
         break;
     case KeyPressCommandIDs::toggleRecord:
         std::cout << "toggleRecord" << std::endl;
-        EngineHelpers::toggleRecord(m_editComponent->getEditViewState().m_edit);
+        EngineHelpers::toggleRecord(m_editComponent->getEditViewState());
         break;
     case KeyPressCommandIDs::loopToggle:
         EngineHelpers::toggleLoop(*m_edit);

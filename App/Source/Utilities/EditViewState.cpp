@@ -385,6 +385,88 @@ void EditViewState::updatePositionFollower(juce::String timeLineID, int width)
     }
 }
 
+void EditViewState::beginRecordCountIn()
+{
+    clearRecordCountIn();
+
+    auto &transport = m_edit.getTransport();
+
+    if (transport.isPlaying() || transport.isRecording() || m_edit.getNumCountInBeats() <= 0)
+        return;
+
+    m_recordCountIn.active = true;
+    m_recordCountIn.punchInTime = transport.getPosition();
+
+    const auto punchInBeat = m_edit.tempoSequence.toBeats(m_recordCountIn.punchInTime);
+    m_recordCountIn.visibleStartTime = m_edit.tempoSequence.toTime(punchInBeat - tracktion::BeatDuration::fromBeats(m_edit.getNumCountInBeats()));
+}
+
+void EditViewState::clearRecordCountIn()
+{
+    m_recordCountIn = {};
+}
+
+bool EditViewState::isRecordCountingIn()
+{
+    updateRecordCountIn();
+    return m_recordCountIn.active;
+}
+
+int EditViewState::getRecordCountInBeatsRemaining()
+{
+    updateRecordCountIn();
+
+    const auto currentPosition = m_edit.getTransport().getPosition();
+
+    if (!m_recordCountIn.active || currentPosition < m_recordCountIn.visibleStartTime || currentPosition >= m_recordCountIn.punchInTime)
+        return 0;
+
+    const auto currentBeat = m_edit.tempoSequence.toBeats(currentPosition);
+    const auto punchInBeat = m_edit.tempoSequence.toBeats(m_recordCountIn.punchInTime);
+    const auto beatsRemaining = punchInBeat - currentBeat;
+
+    return juce::jmax(1, static_cast<int>(beatsRemaining.inBeats() + 0.999999));
+}
+
+juce::String EditViewState::getRecordCountInText()
+{
+    updateRecordCountIn();
+
+    if (!m_recordCountIn.active)
+        return {};
+
+    const auto currentPosition = m_edit.getTransport().getPosition();
+
+    if (currentPosition < m_recordCountIn.visibleStartTime || currentPosition >= m_recordCountIn.punchInTime)
+        return {};
+
+    const auto currentBeat = m_edit.tempoSequence.toBeats(currentPosition);
+    const auto punchInBeat = m_edit.tempoSequence.toBeats(m_recordCountIn.punchInTime);
+    const auto beatsRemaining = punchInBeat - currentBeat;
+
+    return juce::String(juce::jmax(1, static_cast<int>(beatsRemaining.inBeats() + 0.999999)));
+}
+
+void EditViewState::updateRecordCountIn()
+{
+    if (!m_recordCountIn.active)
+        return;
+
+    auto &transport = m_edit.getTransport();
+
+    if (!transport.isPlaying())
+    {
+        clearRecordCountIn();
+        return;
+    }
+
+    if (transport.getPosition() >= m_recordCountIn.punchInTime)
+    {
+        clearRecordCountIn();
+        return;
+    }
+}
+
 SimpleThumbnail *EditViewState::getOrCreateThumbnail(te::WaveAudioClip::Ptr wac) { return m_thumbNailManager->getOrCreateThumbnail(wac); }
 void EditViewState::clearThumbnails() { m_thumbNailManager->clearThumbnails(); }
 void EditViewState::removeThumbnail(te::EditItemID id) { m_thumbNailManager->removeThumbnail(id); }
