@@ -33,6 +33,11 @@ class ExtendedUIBehaviour : public te::UIBehaviour
 public:
     ExtendedUIBehaviour() = default;
 
+    void setFocusedEdit(te::Edit *edit) { m_focusedEdit = edit; }
+
+    te::Edit *getCurrentlyFocusedEdit() override { return m_focusedEdit; }
+    te::Edit *getLastFocusedEdit() override { return m_focusedEdit; }
+
     std::unique_ptr<juce::Component> createPluginWindow(te::PluginWindowState &pws) override
     {
         if (auto ws = dynamic_cast<te::Plugin::WindowState *>(&pws))
@@ -68,6 +73,8 @@ public:
     std::unique_ptr<juce::AudioThumbnailBase> createAudioThumbnail(int sourceSamplesPerThumbnailSample, juce::AudioFormatManager &formatManagerToUse, juce::AudioThumbnailCache &cacheToUse) override { return std::make_unique<Thumbnail>(sourceSamplesPerThumbnailSample, formatManagerToUse, cacheToUse); }
 
 private:
+    te::Edit *m_focusedEdit = nullptr;
+
     struct TaskRunner : public juce::Thread
     {
         TaskRunner(te::ThreadPoolJobWithProgress &t, double &prog)

@@ -108,6 +108,9 @@ MainComponent::MainComponent(ApplicationViewState &state)
 
 MainComponent::~MainComponent()
 {
+    if (auto *uiBehaviour = dynamic_cast<ExtendedUIBehaviour *>(&m_engine.getUIBehaviour()))
+        uiBehaviour->setFocusedEdit(nullptr);
+
     m_applicationState.m_applicationStateValueTree.removeListener(this);
     m_selectionManager.removeChangeListener(this);
     if (m_edit)
@@ -738,10 +741,16 @@ void MainComponent::setupEdit(juce::File editFile)
     m_selectionManager.deselectAll();
     m_editComponent = nullptr;
 
+    if (auto *uiBehaviour = dynamic_cast<ExtendedUIBehaviour *>(&m_engine.getUIBehaviour()))
+        uiBehaviour->setFocusedEdit(nullptr);
+
     if (editFile.existsAsFile())
         m_edit = te::loadEditFromFile(m_engine, editFile);
     else
         m_edit = te::createEmptyEdit(m_engine, editFile);
+
+    if (auto *uiBehaviour = dynamic_cast<ExtendedUIBehaviour *>(&m_engine.getUIBehaviour()))
+        uiBehaviour->setFocusedEdit(m_edit.get());
 
     if (isNewEdit)
         clearAudioTracks();
