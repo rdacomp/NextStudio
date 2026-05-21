@@ -20,6 +20,8 @@ juce_add_binary_data(Pictures SOURCES
     arrowright18.svg
     arrowdown18.svg
     automation.svg
+    Automation_read.svg
+    Automation_write.svg
     follow.svg
     preroll.svg
     folderopen.svg

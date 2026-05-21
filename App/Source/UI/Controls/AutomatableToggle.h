@@ -36,6 +36,7 @@ public:
     // AutomatableParameter::Listener overrides
     void curveHasChanged(te::AutomatableParameter &) override {}
     void currentValueChanged(te::AutomatableParameter &p) override;
+    void parameterChanged(te::AutomatableParameter &p, float) override;
 
     // AutomationDragDropTarget overrides
     bool hasAnAutomatableParameter() override { return true; }

@@ -9,6 +9,7 @@
 */
 
 #include "UI/Controls/AutomatableComboBox.h"
+#include "Utilities/AutomationWriteGuard.h"
 
 namespace
 {
@@ -37,7 +38,6 @@ AutomatableComboBoxComponent::AutomatableComboBoxComponent(te::AutomatableParame
         addItem(text, index++);
     }
 
-    // Initial update
     currentValueChanged(*ap);
 
     onChange = [this]
@@ -50,7 +50,10 @@ AutomatableComboBoxComponent::AutomatableComboBoxComponent(te::AutomatableParame
             float newVal = range.start + ((float)(index - 1) * step);
 
             if (m_automatableParameter->getCurrentValue() != newVal)
+            {
+                AutomationWriteGuard::markTouched(m_automatableParameter);
                 m_automatableParameter->setParameter(newVal, juce::sendNotification);
+            }
         }
     };
 }
@@ -62,9 +65,24 @@ AutomatableComboBoxComponent::~AutomatableComboBoxComponent()
 
 void AutomatableComboBoxComponent::currentValueChanged(te::AutomatableParameter &p)
 {
+    if (AutomationWriteGuard::isTouched(&p))
+        return;
+
     auto range = p.valueRange;
     float step = range.interval > 0.0f ? range.interval : 1.0f;
     int id = (int)std::round((p.getCurrentValue() - range.start) / step) + 1;
+
+    if (getSelectedId() != id)
+        setSelectedId(id, juce::dontSendNotification);
+}
+
+void AutomatableComboBoxComponent::parameterChanged(te::AutomatableParameter &p, float newValue)
+{
+    AutomationWriteGuard::markTouched(&p);
+
+    auto range = p.valueRange;
+    float step = range.interval > 0.0f ? range.interval : 1.0f;
+    int id = (int)std::round((newValue - range.start) / step) + 1;
 
     if (getSelectedId() != id)
         setSelectedId(id, juce::dontSendNotification);

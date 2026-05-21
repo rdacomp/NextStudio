@@ -43,6 +43,7 @@ public:
 
     void curveHasChanged(te::AutomatableParameter &) override;
     void currentValueChanged(te::AutomatableParameter &) override;
+    void parameterChanged(te::AutomatableParameter &, float) override;
 
     void startedDragging() override;
     void stoppedDragging() override;

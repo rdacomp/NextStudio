@@ -32,7 +32,8 @@ public:
     void updateLabel();
 
     void curveHasChanged(te::AutomatableParameter &) override {}
-    void currentValueChanged(te::AutomatableParameter &) override { updateLabel(); }
+    void currentValueChanged(te::AutomatableParameter &) override;
+    void parameterChanged(te::AutomatableParameter &, float) override;
 
 protected:
     // Allow derived classes to access these members
@@ -45,5 +46,7 @@ protected:
     virtual juce::String getCustomDisplayString() const { return {}; }
 
 private:
+    void updateLabelForValue(float value);
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AutomatableParameterComponent)
 };

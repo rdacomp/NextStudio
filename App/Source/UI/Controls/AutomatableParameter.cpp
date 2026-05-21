@@ -9,6 +9,7 @@
 */
 
 #include "UI/Controls/AutomatableParameter.h"
+#include "Utilities/AutomationWriteGuard.h"
 
 AutomatableParameterComponent::AutomatableParameterComponent(const te::AutomatableParameter::Ptr ap, juce::String name)
     : m_automatableParameter(ap)
@@ -66,7 +67,32 @@ void AutomatableParameterComponent::setKnobSkewFromMidPoint(double midPoint)
         m_knob->setSkewFactorFromMidPoint(midPoint);
 }
 
+void AutomatableParameterComponent::currentValueChanged(te::AutomatableParameter &p)
+{
+    if (AutomationWriteGuard::isTouched(&p))
+        return;
+
+    updateLabel();
+}
+
+void AutomatableParameterComponent::parameterChanged(te::AutomatableParameter &p, float newValue)
+{
+    if (&p == m_automatableParameter.get())
+        updateLabelForValue(newValue);
+}
+
 void AutomatableParameterComponent::updateLabel()
+{
+    if (m_automatableParameter == nullptr)
+    {
+        m_valueLabel.setText("-", juce::NotificationType::dontSendNotification);
+        return;
+    }
+
+    updateLabelForValue(m_automatableParameter->getCurrentValue());
+}
+
+void AutomatableParameterComponent::updateLabelForValue(float value)
 {
     if (m_automatableParameter == nullptr)
     {
@@ -76,7 +102,16 @@ void AutomatableParameterComponent::updateLabel()
 
     auto customDisplay = getCustomDisplayString();
     if (customDisplay.isNotEmpty())
+    {
         m_valueLabel.setText(customDisplay, juce::NotificationType::dontSendNotification);
-    else
-        m_valueLabel.setText(m_automatableParameter->getCurrentValueAsString(), juce::NotificationType::dontSendNotification);
+        return;
+    }
+
+    auto text = m_automatableParameter->valueToString(value);
+    auto label = m_automatableParameter->getLabel();
+
+    if (!label.isEmpty() && !text.endsWith(label))
+        text << ' ' << label;
+
+    m_valueLabel.setText(text, juce::NotificationType::dontSendNotification);
 }

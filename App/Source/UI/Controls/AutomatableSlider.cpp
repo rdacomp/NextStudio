@@ -10,6 +10,7 @@
 
 #include "UI/Controls/AutomatableSlider.h"
 #include "Utilities/NextLookAndFeel.h"
+#include "Utilities/AutomationWriteGuard.h"
 
 namespace
 {
@@ -150,7 +151,6 @@ void AutomatableSliderComponent::updateModDepthVisibility()
 
     auto assignments = m_automatableParameter->getAssignments();
 
-    // Check if mouse is over this component or the depth slider itself
     bool mouseIsOver = isMouseOver(true) || m_modDepthSlider.isMouseOverOrDragging();
     bool shouldBeVisible = !assignments.isEmpty() && mouseIsOver;
 
@@ -295,7 +295,6 @@ void AutomatableSliderComponent::setParameter(te::AutomatableParameter::Ptr newP
         if (auto t = m_automatableParameter->getTrack())
             m_trackColour = t->getColour();
 
-        // Reset double click value if available
         if (auto def = m_automatableParameter->getDefaultValue())
             setDoubleClickReturnValue(true, *def);
         else
@@ -339,15 +338,28 @@ void AutomatableSliderComponent::curveHasChanged(te::AutomatableParameter &) {}
 
 void AutomatableSliderComponent::currentValueChanged(te::AutomatableParameter &)
 {
-    if (m_automatableParameter)
-    {
-        double newVal = m_automatableParameter->getCurrentBaseValue();
+    if (m_automatableParameter == nullptr)
+        return;
 
-        if (!isMouseButtonDown() && std::abs(getValue() - newVal) > 0.0001)
-            setValue(newVal, juce::dontSendNotification);
+    if (AutomationWriteGuard::isTouched(m_automatableParameter))
+        return;
 
-        repaint();
-    }
+    const double newVal = m_automatableParameter->getCurrentBaseValue();
+
+    if (!isMouseButtonDown() && std::abs(getValue() - newVal) > 0.0001)
+        setValue(newVal, juce::dontSendNotification);
+
+    repaint();
+}
+
+void AutomatableSliderComponent::parameterChanged(te::AutomatableParameter &p, float newValue)
+{
+    AutomationWriteGuard::markTouched(&p);
+
+    if (&p == m_automatableParameter.get() && std::abs(getValue() - static_cast<double>(newValue)) > 0.0001)
+        setValue(newValue, juce::dontSendNotification);
+
+    repaint();
 }
 
 void AutomatableSliderComponent::startedDragging()
@@ -367,6 +379,7 @@ void AutomatableSliderComponent::valueChanged()
     if (m_automatableParameter)
     {
         float val = static_cast<float>(getValue());
+        AutomationWriteGuard::markTouched(m_automatableParameter);
         m_automatableParameter->setParameter(val, juce::sendNotification);
     }
 }

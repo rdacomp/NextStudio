@@ -22,6 +22,7 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 
 #include "SongEditor/EditComponent.h"
 #include "MainComponent.h"
+#include "Utilities/AutomationWriteGuard.h"
 #include "Utilities/Utilities.h"
 
 namespace
@@ -67,6 +68,8 @@ EditComponent::EditComponent(te::Edit &e, EditViewState &evs, ApplicationViewSta
       m_addMidiTrackBtn("Add midi track", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
       m_expandAllBtn("expand all tracks", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
       m_collapseAllBtn("collapse all tracks", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
+      m_automationReadButton("Read automation", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
+      m_automationWriteButton("Write automation", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
       m_selectButton("select clips or automation points", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
       m_lassoSelectButton("select clips or automation points with lasso band", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
       m_timeRangeSelectButton("select time range", juce::DrawableButton::ButtonStyle::ImageOnButtonBackgroundOriginalSize),
@@ -81,6 +84,8 @@ EditComponent::EditComponent(te::Edit &e, EditViewState &evs, ApplicationViewSta
 
     m_edit.state.addListener(this);
     m_editViewState.m_selectionManager.addChangeListener(this);
+    m_edit.getAutomationRecordManager().addChangeListener(this);
+    m_edit.getTransport().addChangeListener(this);
 
     m_scrollbar_v.setAlwaysOnTop(true);
     m_scrollbar_v.setAutoHide(false);
@@ -103,6 +108,7 @@ EditComponent::EditComponent(te::Edit &e, EditViewState &evs, ApplicationViewSta
     addAndMakeVisible(m_songEditor);
     addAndMakeVisible(m_trackListView);
     addAndMakeVisible(m_trackListToolsMenu);
+    addAndMakeVisible(m_automationToolBar);
     addAndMakeVisible(m_toolBar);
     addAndMakeVisible(m_trackListControlMenu);
 
@@ -130,6 +136,20 @@ EditComponent::EditComponent(te::Edit &e, EditViewState &evs, ApplicationViewSta
 
     m_collapseAllBtn.addListener(this);
     m_collapseAllBtn.setTooltip(GUIHelpers::translate("Collapse all tracks", m_editViewState.m_applicationState));
+
+    // Automation controls
+
+    m_automationReadButton.setClickingTogglesState(false);
+    m_automationReadButton.addListener(this);
+    m_automationReadButton.setTooltip(GUIHelpers::translate("Read automation", m_editViewState.m_applicationState));
+
+    m_automationWriteButton.setClickingTogglesState(false);
+    m_automationWriteButton.addListener(this);
+    m_automationWriteButton.setTooltip(GUIHelpers::translate("Write automation", m_editViewState.m_applicationState));
+
+    m_automationToolBar.addButton(&m_automationReadButton);
+    m_automationToolBar.addButton(&m_automationWriteButton);
+    m_automationToolBar.setButtonGap(4);
 
     // SongEditorTools
 
@@ -195,6 +215,8 @@ EditComponent::~EditComponent()
     stopTimer();
     m_autoSaveThreadPool.removeAllJobs(true, 5000);
 
+    m_automationWriteButton.removeListener(this);
+    m_automationReadButton.removeListener(this);
     m_timeStretchButton.removeListener(this);
     m_splitClipButton.removeListener(this);
     m_timeRangeSelectButton.removeListener(this);
@@ -207,6 +229,8 @@ EditComponent::~EditComponent()
     m_addAudioTrackBtn.removeListener(this);
     m_scrollbar_h.removeListener(this);
     m_scrollbar_v.removeListener(this);
+    m_edit.getTransport().removeChangeListener(this);
+    m_edit.getAutomationRecordManager().removeChangeListener(this);
     m_editViewState.m_selectionManager.removeChangeListener(this);
     m_edit.state.removeListener(this);
 }
@@ -240,6 +264,7 @@ void EditComponent::paintOverChildren(juce::Graphics &g)
 void EditComponent::resized()
 {
     GUIHelpers::log("EditComponent: resized()");
+    m_automationToolBar.setBounds(getAutomationToolBarRect());
     m_toolBar.setBounds(getToolBarRect());
     m_timeLine.setBounds(getTimeLineRect());
     m_trackListView.setBounds(getScrollableTrackListRect());
@@ -339,6 +364,18 @@ void EditComponent::changeListenerCallback(juce::ChangeBroadcaster *source)
         if (m_masterLane)
             m_masterLane->repaint();
     }
+    else if (source == &m_edit.getAutomationRecordManager())
+    {
+        if (!m_edit.getAutomationRecordManager().isWritingAutomation())
+            AutomationWriteGuard::clear();
+
+        updateButtonIcons();
+    }
+    else if (source == &m_edit.getTransport())
+    {
+        if (!m_edit.getTransport().isPlaying() && !m_edit.getTransport().isRecording())
+            AutomationWriteGuard::clear();
+    }
 }
 
 void EditComponent::scrollBarMoved(juce::ScrollBar *scrollBarThatHasMoved, double newRangeStart)
@@ -375,6 +412,18 @@ void EditComponent::buttonClicked(juce::Button *button)
     else if (button == &m_collapseAllBtn)
     {
         m_trackListView.collapseTracks(true);
+    }
+    else if (button == &m_automationReadButton)
+    {
+        auto &automationRecordManager = m_edit.getAutomationRecordManager();
+        automationRecordManager.setReadingAutomation(!automationRecordManager.isReadingAutomation());
+        updateButtonIcons();
+    }
+    else if (button == &m_automationWriteButton)
+    {
+        auto &automationRecordManager = m_edit.getAutomationRecordManager();
+        automationRecordManager.setWritingAutomation(!automationRecordManager.isWritingAutomation());
+        updateButtonIcons();
     }
     else if (button == &m_expandAllBtn)
     {
@@ -643,6 +692,14 @@ void EditComponent::handleAsyncUpdate()
 }
 void EditComponent::updateButtonIcons()
 {
+    auto &automationRecordManager = m_edit.getAutomationRecordManager();
+
+    const auto inactiveAutomationColour = juce::Colour(0xff666666);
+    const auto activeReadColour = juce::Colour(0xff90ee90);
+    const auto activeWriteColour = juce::Colour(0xffff6f6f);
+    GUIHelpers::setDrawableOnButton(m_automationReadButton, BinaryData::Automation_read_svg, automationRecordManager.isReadingAutomation() ? activeReadColour : inactiveAutomationColour);
+    GUIHelpers::setDrawableOnButton(m_automationWriteButton, BinaryData::Automation_write_svg, automationRecordManager.isWritingAutomation() ? activeWriteColour : inactiveAutomationColour);
+
     GUIHelpers::setDrawableOnButton(m_addAudioTrackBtn, BinaryData::wavetest5_svg, m_editViewState.m_applicationState.getButtonTextColour());
     GUIHelpers::setDrawableOnButton(m_addMidiTrackBtn, BinaryData::piano5_svg, m_editViewState.m_applicationState.getButtonTextColour());
     GUIHelpers::setDrawableOnButton(m_addFolderTrackBtn, BinaryData::folderopen_svg, m_editViewState.m_applicationState.getButtonTextColour());
@@ -901,6 +958,14 @@ void EditComponent::itemDropped(const SourceDetails &dragSourceDetails)
 
     repaint();
 }
+juce::Rectangle<int> EditComponent::getAutomationToolBarRect()
+{
+    auto rect = getEditorHeaderRect();
+    rect.removeFromRight((rect.getWidth() * 2) / 3);
+    rect.removeFromLeft(8);
+    return rect;
+}
+
 juce::Rectangle<int> EditComponent::getToolBarRect()
 {
     auto rect = getEditorHeaderRect();

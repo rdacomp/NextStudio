@@ -170,6 +170,7 @@ private:
         }
     }
 
+    juce::Rectangle<int> getAutomationToolBarRect();
     juce::Rectangle<int> getToolBarRect();
     juce::Rectangle<int> getEditorHeaderRect();
     juce::Rectangle<int> getTimeLineRect();
@@ -201,6 +202,9 @@ private:
     juce::ApplicationCommandManager &m_commandManager;
     TrackListView m_trackListView;
     FooterBarComponent m_footerbar;
+
+    MenuBar m_automationToolBar;
+    juce::DrawableButton m_automationReadButton, m_automationWriteButton;
 
     MenuBar m_toolBar;
     juce::DrawableButton m_selectButton, m_lassoSelectButton, m_timeRangeSelectButton, m_splitClipButton, m_timeStretchButton, m_reverseClipButton, m_deleteClipButton;

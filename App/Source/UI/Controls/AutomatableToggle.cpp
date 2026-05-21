@@ -9,6 +9,7 @@
 */
 
 #include "UI/Controls/AutomatableToggle.h"
+#include "Utilities/AutomationWriteGuard.h"
 
 namespace
 {
@@ -27,14 +28,16 @@ AutomatableToggleButton::AutomatableToggleButton(te::AutomatableParameter::Ptr a
     ap->addListener(this);
     setButtonText(ap->getParameterName());
 
-    // Initial update
     currentValueChanged(*ap);
 
     onClick = [this]
     {
         float newVal = getToggleState() ? 1.0f : 0.0f;
         if (m_automatableParameter->getCurrentValue() != newVal)
+        {
+            AutomationWriteGuard::markTouched(m_automatableParameter);
             m_automatableParameter->setParameter(newVal, juce::sendNotification);
+        }
     };
 }
 
@@ -46,7 +49,19 @@ AutomatableToggleButton::~AutomatableToggleButton()
 
 void AutomatableToggleButton::currentValueChanged(te::AutomatableParameter &p)
 {
+    if (AutomationWriteGuard::isTouched(&p))
+        return;
+
     bool shouldBeOn = p.getCurrentValue() > 0.5f;
+    if (getToggleState() != shouldBeOn)
+        setToggleState(shouldBeOn, juce::dontSendNotification);
+}
+
+void AutomatableToggleButton::parameterChanged(te::AutomatableParameter &p, float newValue)
+{
+    AutomationWriteGuard::markTouched(&p);
+
+    bool shouldBeOn = newValue > 0.5f;
     if (getToggleState() != shouldBeOn)
         setToggleState(shouldBeOn, juce::dontSendNotification);
 }
