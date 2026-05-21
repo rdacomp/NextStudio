@@ -23,14 +23,9 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 
 #include "LowerRange/PluginChain/PluginPresetInterface.h"
 
-/**
- * Reusable preset management component for all plugins
- * Provides save/load functionality with a combo box showing all presets
- */
 class PresetManagerComponent : public juce::Component
 {
 public:
-    // Constructor requires a valid interface reference. No nullptr possible.
     explicit PresetManagerComponent(PluginPresetInterface &pluginInterface, juce::Colour headerColour, juce::String title = "Presets");
     ~PresetManagerComponent() override = default;
 
@@ -39,19 +34,22 @@ public:
     void setHeaderColour(juce::Colour colour);
 
 private:
-    PluginPresetInterface &m_pluginInterface; // Reference instead of pointer
+    PluginPresetInterface &m_pluginInterface;
     juce::Colour m_headerColour;
 
     juce::String m_title;
     std::unique_ptr<juce::ComboBox> m_presetCombo;
     std::unique_ptr<juce::TextButton> m_saveButton;
     std::unique_ptr<juce::TextButton> m_loadButton;
+    bool m_isRefreshingPresetList = false;
 
     void refreshPresetList();
     void loadPresetFromCombo();
     void savePreset();
     void loadPreset();
     void selectPreset(const juce::String &name);
+    void applyPresetFile(const juce::File &presetFile);
+    juce::Array<juce::File> getAvailablePresetFiles();
 
     juce::File getPresetDirectory();
     void ensurePresetDirectoryExists();

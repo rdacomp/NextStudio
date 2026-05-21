@@ -23,6 +23,53 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 #include "LowerRange/PluginChain/PresetHelpers.h"
 #include "Utilities/Utilities.h"
 
+namespace
+{
+std::unique_ptr<juce::XmlElement> parsePresetXml(const juce::File &presetFile)
+{
+    return std::unique_ptr<juce::XmlElement>(juce::XmlDocument::parse(presetFile));
+}
+
+bool isPresetFileCompatible(const juce::File &presetFile, const PluginPresetInterface &pluginInterface)
+{
+    if (!presetFile.existsAsFile())
+        return false;
+
+    if (auto xml = parsePresetXml(presetFile))
+    {
+        if (!xml->hasTagName("PLUGIN"))
+            return false;
+
+        const auto presetState = juce::ValueTree::fromXml(*xml);
+        // Deliberately use the cheap visibility filter here. This runs during preset-list
+        // rebuilding for routine UI updates, so performing deep compatibility validation here
+        // (especially anything that instantiates plugins) would make track selection sluggish.
+        return pluginInterface.isPresetVisibleInList(presetState);
+    }
+
+    return false;
+}
+
+bool containsPresetNameIgnoreCase(const juce::StringArray &names, const juce::String &name)
+{
+    for (const auto &existing : names)
+        if (existing.equalsIgnoreCase(name))
+            return true;
+
+    return false;
+}
+
+struct PresetFileNameComparator
+{
+    static int compareElements(const juce::File &first, const juce::File &second)
+    {
+        return first.getFileNameWithoutExtension().compareNatural(second.getFileNameWithoutExtension());
+    }
+};
+
+PresetFileNameComparator presetFileNameComparator;
+} // namespace
+
 PresetManagerComponent::PresetManagerComponent(PluginPresetInterface &pluginInterface, juce::Colour headerColour, juce::String title)
     : m_pluginInterface(pluginInterface),
       m_headerColour(headerColour),
@@ -66,26 +113,21 @@ void PresetManagerComponent::setHeaderColour(juce::Colour colour)
 void PresetManagerComponent::resized()
 {
     auto area = getLocalBounds().reduced(5);
-    area.removeFromTop(20); // header
+    area.removeFromTop(20);
 
-    int buttonHeight = 25;
-    int spacing = 5;
+    constexpr int buttonHeight = 25;
+    constexpr int spacing = 5;
 
-    // Preset combo box (takes most space)
     if (m_presetCombo)
         m_presetCombo->setBounds(area.removeFromTop(buttonHeight));
 
-    // Spacing
     area.removeFromTop(spacing);
 
-    // Save button (full width)
     if (m_saveButton)
         m_saveButton->setBounds(area.removeFromTop(buttonHeight));
 
-    // Spacing
     area.removeFromTop(spacing);
 
-    // Load button (full width)
     if (m_loadButton)
         m_loadButton->setBounds(area.removeFromTop(buttonHeight));
 }
@@ -107,9 +149,7 @@ void PresetManagerComponent::selectPreset(const juce::String &name)
         }
     }
 
-    GUIHelpers::log("PresetManagerComponent: Preset '" + name + "' not found in list");
-
-    m_presetCombo->setSelectedId(-1, juce::dontSendNotification);
+    m_presetCombo->setText(name, juce::dontSendNotification);
 }
 
 void PresetManagerComponent::refreshPresetList()
@@ -117,77 +157,42 @@ void PresetManagerComponent::refreshPresetList()
     if (m_presetCombo == nullptr)
         return;
 
-    m_presetCombo->clear();
+    const auto previousSelection = m_presetCombo->getText();
 
-    auto presetDir = getPresetDirectory();
+    // Rebuilding the combo must not trigger an implicit preset load.
+    m_isRefreshingPresetList = true;
+    m_presetCombo->clear(juce::dontSendNotification);
+
     ensurePresetDirectoryExists();
-
-    // Add all preset files to combo box
-    juce::Array<juce::File> presetFiles;
-    presetDir.findChildFiles(presetFiles, juce::File::findFiles, false, "*.nxtpreset");
-
-    // Sort alphabetically
-    presetFiles.sort();
+    auto presetFiles = getAvailablePresetFiles();
 
     for (int i = 0; i < presetFiles.size(); ++i)
     {
         juce::String presetName = presetFiles[i].getFileNameWithoutExtension();
         m_presetCombo->addItem(presetName, i + 1); // +1 because 0 is not used
     }
+
+    m_isRefreshingPresetList = false;
+
+    if (previousSelection.isNotEmpty())
+        selectPreset(previousSelection);
 }
 
 void PresetManagerComponent::loadPresetFromCombo()
 {
-    if (m_presetCombo == nullptr)
+    if (m_presetCombo == nullptr || m_isRefreshingPresetList)
         return;
 
-    int selectedId = m_presetCombo->getSelectedId();
+    const int selectedId = m_presetCombo->getSelectedId();
+    const auto presetFiles = getAvailablePresetFiles();
+    const int presetIndex = selectedId - 1;
 
-    auto presetDir = getPresetDirectory();
-    juce::Array<juce::File> presetFiles;
-    presetDir.findChildFiles(presetFiles, juce::File::findFiles, false, "*.nxtpreset");
-    presetFiles.sort();
-
-    int presetIndex = selectedId - 1; // -1 because 0 is not used
-    if (presetIndex >= 0 && presetIndex < presetFiles.size())
-    {
-        juce::File presetFile = presetFiles[presetIndex];
-        if (presetFile.existsAsFile())
-        {
-            // Use XmlDocument::parse for robust XML parsing
-            if (auto xml = std::unique_ptr<juce::XmlElement>(juce::XmlDocument::parse(presetFile)))
-            {
-                if (xml->hasTagName("PLUGIN"))
-                {
-                    juce::ValueTree presetState = juce::ValueTree::fromXml(*xml);
-                    // Check if it's a valid preset for this plugin
-                    if (presetState.hasType(juce::Identifier("PLUGIN")) && presetState.getProperty("type") == m_pluginInterface.getPluginTypeName())
-                    {
-                        m_pluginInterface.restorePluginState(presetState);
-                        m_pluginInterface.setLastLoadedPresetName(presetFile.getFileNameWithoutExtension());
-                        m_pluginInterface.setInitialPresetLoaded(true);
-                    }
-                    else
-                    {
-                        GUIHelpers::log("PresetManagerComponent: Preset type mismatch or invalid format in " + presetFile.getFileName());
-                    }
-                }
-                else
-                {
-                    GUIHelpers::log("PresetManagerComponent: Root element is not <PLUGIN> in " + presetFile.getFileName());
-                }
-            }
-            else
-            {
-                GUIHelpers::log("PresetManagerComponent: Failed to parse XML in " + presetFile.getFullPathName());
-            }
-        }
-    }
+    if (juce::isPositiveAndBelow(presetIndex, presetFiles.size()))
+        applyPresetFile(presetFiles.getReference(presetIndex));
 }
 
 void PresetManagerComponent::savePreset()
 {
-    // Capture state immediately before opening any modal dialogs
     juce::ValueTree pluginState = m_pluginInterface.getPluginState();
 
     juce::Component::SafePointer<PresetManagerComponent> safeThis(this);
@@ -201,31 +206,21 @@ void PresetManagerComponent::savePreset()
     {
         juce::File presetFile = fc.getResult();
 
-        // Ensure file has the correct extension
         if (!presetFile.hasFileExtension(".nxtpreset"))
-        {
             presetFile = presetFile.withFileExtension(".nxtpreset");
-        }
 
         juce::String presetName = presetFile.getFileNameWithoutExtension();
-
-        // Sanitize the preset name to create a legal filename
         juce::String safePresetName = juce::File::createLegalFileName(presetName);
 
         if (safePresetName.isEmpty())
         {
-            // Optionally, show an alert to the user
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon, "Invalid Preset Name", "The chosen preset name is invalid or contains only illegal characters.");
             return;
         }
 
-        // If sanitization changed the name, update the file object to use the new name
         if (safePresetName != presetName)
-        {
             presetFile = presetFile.getSiblingFile(safePresetName + ".nxtpreset");
-        }
 
-        // Update the name property in the captured state
         pluginState.setProperty("name", safePresetName, nullptr);
 
         if (auto xml = std::unique_ptr<juce::XmlElement>(pluginState.createXml()))
@@ -235,18 +230,8 @@ void PresetManagerComponent::savePreset()
             if (safeThis == nullptr)
                 return;
 
-            // Refresh preset list after saving
             refreshPresetList();
-
-            // Select the newly saved preset
-            for (int i = 0; i < m_presetCombo->getNumItems(); ++i)
-            {
-                if (m_presetCombo->getItemText(i) == safePresetName)
-                {
-                    m_presetCombo->setSelectedItemIndex(i, juce::dontSendNotification);
-                    break;
-                }
-            }
+            selectPreset(safePresetName);
         }
     }
 }
@@ -257,7 +242,6 @@ void PresetManagerComponent::loadPreset()
     ensurePresetDirectoryExists();
 
     juce::Component::SafePointer<PresetManagerComponent> safeThis(this);
-
     juce::FileChooser fc("Load Preset", presetDir, "*.nxtpreset");
 
     if (fc.browseForFileToOpen())
@@ -265,39 +249,73 @@ void PresetManagerComponent::loadPreset()
         if (safeThis == nullptr)
             return;
 
-        juce::File presetFile = fc.getResult();
-        if (presetFile.existsAsFile())
-        {
-            // Use XmlDocument::parse for robust XML parsing
-            if (auto xml = std::unique_ptr<juce::XmlElement>(juce::XmlDocument::parse(presetFile)))
-            {
-                if (xml->hasTagName("PLUGIN"))
-                {
-                    juce::ValueTree presetState = juce::ValueTree::fromXml(*xml);
+        applyPresetFile(fc.getResult());
+    }
+}
 
-                    // Check if it's a valid preset for this plugin
-                    if (presetState.hasType(juce::Identifier("PLUGIN")) && presetState.getProperty("type") == m_pluginInterface.getPluginTypeName())
-                    {
-                        m_pluginInterface.restorePluginState(presetState);
-                        m_pluginInterface.setLastLoadedPresetName(presetFile.getFileNameWithoutExtension());
-                        m_pluginInterface.setInitialPresetLoaded(true);
-                    }
-                    else
-                    {
-                        GUIHelpers::log("PresetManagerComponent: Preset type mismatch or invalid format in " + presetFile.getFileName());
-                    }
-                }
-                else
-                {
-                    GUIHelpers::log("PresetManagerComponent: Root element is not <PLUGIN> in " + presetFile.getFileName());
-                }
-            }
-            else
-            {
-                GUIHelpers::log("PresetManagerComponent: Failed to parse XML in " + presetFile.getFullPathName());
-            }
+void PresetManagerComponent::applyPresetFile(const juce::File &presetFile)
+{
+    if (!presetFile.existsAsFile())
+        return;
+
+    if (auto xml = parsePresetXml(presetFile))
+    {
+        if (!xml->hasTagName("PLUGIN"))
+        {
+            GUIHelpers::log("PresetManagerComponent: Root element is not <PLUGIN> in " + presetFile.getFileName());
+            return;
+        }
+
+        auto presetState = juce::ValueTree::fromXml(*xml);
+        if (!m_pluginInterface.applyPresetState(presetState))
+        {
+            GUIHelpers::log("PresetManagerComponent: Preset type mismatch or invalid format in " + presetFile.getFileName());
+            return;
+        }
+
+        m_pluginInterface.setLastLoadedPresetName(presetFile.getFileNameWithoutExtension());
+        m_pluginInterface.setInitialPresetLoaded(true);
+        selectPreset(presetFile.getFileNameWithoutExtension());
+        return;
+    }
+
+    GUIHelpers::log("PresetManagerComponent: Failed to parse XML in " + presetFile.getFullPathName());
+}
+
+juce::Array<juce::File> PresetManagerComponent::getAvailablePresetFiles()
+{
+    juce::Array<juce::File> searchDirs;
+    searchDirs.add(getPresetDirectory());
+    searchDirs.addArray(m_pluginInterface.getAdditionalPresetSearchDirectories());
+
+    juce::Array<juce::File> presetFiles;
+    juce::StringArray seenNames;
+
+    for (const auto &dir : searchDirs)
+    {
+        if (!dir.exists())
+            continue;
+
+        juce::Array<juce::File> dirFiles;
+        dir.findChildFiles(dirFiles, juce::File::findFiles, false, "*.nxtpreset");
+        dirFiles.sort(presetFileNameComparator, true);
+
+        for (const auto &file : dirFiles)
+        {
+            const auto presetName = file.getFileNameWithoutExtension();
+            if (containsPresetNameIgnoreCase(seenNames, presetName))
+                continue;
+
+            if (!isPresetFileCompatible(file, m_pluginInterface))
+                continue;
+
+            presetFiles.add(file);
+            seenNames.add(presetName);
         }
     }
+
+    presetFiles.sort(presetFileNameComparator, true);
+    return presetFiles;
 }
 
 juce::File PresetManagerComponent::getPresetDirectory() { return PresetHelpers::getPresetDirectory(m_pluginInterface); }
@@ -306,7 +324,5 @@ void PresetManagerComponent::ensurePresetDirectoryExists()
 {
     auto presetDir = getPresetDirectory();
     if (!presetDir.exists())
-    {
         presetDir.createDirectory();
-    }
 }

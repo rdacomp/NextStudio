@@ -1173,7 +1173,10 @@ void PluginChainView::updateTrackPresetManager()
         return;
     }
 
-    if (m_trackPresetAdapter != nullptr && &m_trackPresetAdapter->getTrack() == audioTrack)
+    const bool isMidiPresetTarget = EngineHelpers::isMidiTrack(*audioTrack);
+    const auto desiredKind = isMidiPresetTarget ? TrackPresetAdapterBase::PresetKind::midi : TrackPresetAdapterBase::PresetKind::audio;
+
+    if (m_trackPresetAdapter != nullptr && &m_trackPresetAdapter->getTrack() == audioTrack && m_trackPresetAdapter->getPresetKind() == desiredKind)
     {
         if (m_trackPresetManager)
             m_trackPresetManager->setHeaderColour(audioTrack->getColour());
@@ -1187,8 +1190,19 @@ void PluginChainView::updateTrackPresetManager()
     }
     m_trackPresetAdapter.reset();
 
-    m_trackPresetAdapter = std::make_unique<TrackPresetAdapter>(*audioTrack, m_evs.m_applicationState);
-    m_trackPresetManager = std::make_unique<PresetManagerComponent>(*m_trackPresetAdapter, audioTrack->getColour(), "TrackPresets");
+    juce::String presetTitle;
+    if (isMidiPresetTarget)
+    {
+        m_trackPresetAdapter = std::make_unique<MidiTrackPresetAdapter>(*audioTrack, m_evs.m_applicationState);
+        presetTitle = "MIDI Track Presets";
+    }
+    else
+    {
+        m_trackPresetAdapter = std::make_unique<AudioTrackPresetAdapter>(*audioTrack, m_evs.m_applicationState);
+        presetTitle = "Audio Track Presets";
+    }
+
+    m_trackPresetManager = std::make_unique<PresetManagerComponent>(*m_trackPresetAdapter, audioTrack->getColour(), presetTitle);
     addAndMakeVisible(*m_trackPresetManager);
 }
 
@@ -1759,7 +1773,7 @@ void AddButton::itemDropped(const SourceDetails &dragSourceDetails)
     {
         if (auto listbox = dynamic_cast<juce::ListBox *>(dragSourceDetails.sourceComponent.get()))
         {
-            if (auto lbm = dynamic_cast<PluginListbox *>(listbox->getModel()))
+            if (auto lbm = dynamic_cast<PluginListbox *>(listbox->getListBoxModel()))
             {
                 // Resolve owning rack view from the AddButton hierarchy.
                 auto pluginRackComp = findParentComponentOfClass<PluginChainView>();

@@ -30,7 +30,6 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 #include "UI/ModifierSidebar.h"
 #include "Utilities/EditViewState.h"
 #include "Utilities/Utilities.h"
-// #include "SideBrowser/PluginBrowser.h"
 
 namespace te = tracktion_engine;
 
@@ -130,7 +129,7 @@ private:
 
     ModifierSidebar m_modifierSidebar;
     ModifierDetailPanel m_modifierDetailPanel;
-    std::unique_ptr<TrackPresetAdapter> m_trackPresetAdapter;
+    std::unique_ptr<TrackPresetAdapterBase> m_trackPresetAdapter;
     std::unique_ptr<PresetManagerComponent> m_trackPresetManager;
     std::unique_ptr<MixerChannelStripComponent> m_channelStrip;
 

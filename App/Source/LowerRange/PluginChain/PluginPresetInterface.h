@@ -23,27 +23,14 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 
 #include "Utilities/ApplicationViewState.h"
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_core/juce_core.h>
 
-/**
- * Abstract interface for plugin preset management
- * All plugin components that want to use the PresetManagerComponent
- * must implement this interface
- */
 class PluginPresetInterface
 {
 public:
     virtual ~PluginPresetInterface() = default;
 
-    /**
-     * Get the current plugin state as ValueTree
-     * This should return the complete state that needs to be saved
-     */
     virtual juce::ValueTree getPluginState() = 0;
-
-    /**
-     * Restore plugin state from a ValueTree
-     * This should properly restore all plugin parameters
-     */
     virtual juce::ValueTree getFactoryDefaultState() = 0;
     virtual bool getInitialPresetLoaded() = 0;
     virtual void setInitialPresetLoaded(bool loaded) = 0;
@@ -51,20 +38,40 @@ public:
     virtual void setLastLoadedPresetName(const juce::String &name) = 0;
     virtual void restorePluginState(const juce::ValueTree &state) = 0;
 
-    /**
-     * Get the subfolder name for this plugin's presets
-     * e.g., "FourOSC", "Reverb", etc.
-     */
+    virtual bool applyPresetState(const juce::ValueTree &state)
+    {
+        if (!isPresetCompatible(state))
+            return false;
+
+        restorePluginState(state);
+        return true;
+    }
+
     virtual juce::String getPresetSubfolder() const = 0;
-
-    /**
-     * Get the plugin type name for validation
-     * e.g., "FourOSC", "Reverb", etc.
-     */
     virtual juce::String getPluginTypeName() const = 0;
+    virtual ApplicationViewState &getApplicationViewState() = 0;
 
     /**
-     * Get access to the application view state for preset directory access
+     * Returns additional directories that should be searched for compatible presets.
+     * Used for legacy compatibility/migrations.
      */
-    virtual ApplicationViewState &getApplicationViewState() = 0;
+    virtual juce::Array<juce::File> getAdditionalPresetSearchDirectories() const { return {}; }
+
+    /**
+     * Cheap filter used for preset list population.
+     * Should avoid expensive engine/plugin instantiation work.
+     */
+    virtual bool isPresetVisibleInList(const juce::ValueTree &state) const
+    {
+        return state.hasType(juce::Identifier("PLUGIN")) && state.getProperty("type") == getPluginTypeName();
+    }
+
+    /**
+     * Returns true if the supplied preset state can be applied to this target.
+     * May perform deeper validation when the preset is actually loaded.
+     */
+    virtual bool isPresetCompatible(const juce::ValueTree &state) const
+    {
+        return isPresetVisibleInList(state);
+    }
 };
