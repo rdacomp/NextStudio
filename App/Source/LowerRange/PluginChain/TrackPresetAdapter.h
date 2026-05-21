@@ -81,7 +81,7 @@ public:
         juce::ValueTree pluginsTree("PLUGINS");
         for (auto plugin : m_track.pluginList)
         {
-            if (plugin == m_track.getVolumePlugin() || plugin == m_track.getLevelMeterPlugin() || plugin == m_track.getEqualiserPlugin())
+            if (plugin == m_track.getVolumePlugin() || plugin == m_track.getLevelMeterPlugin())
                 continue;
 
             auto pState = plugin->state.createCopy();
@@ -148,7 +148,7 @@ public:
         for (int i = m_track.pluginList.size() - 1; i >= 0; --i)
         {
             auto p = m_track.pluginList[i];
-            if (p != m_track.getVolumePlugin() && p != m_track.getLevelMeterPlugin() && p != m_track.getEqualiserPlugin())
+            if (p != m_track.getVolumePlugin() && p != m_track.getLevelMeterPlugin())
             {
                 p->deleteFromParent();
             }
