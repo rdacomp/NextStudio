@@ -11,6 +11,7 @@
 #pragma once
 
 #include "../JuceLibraryCode/JuceHeader.h"
+#include "UI/Controls/AutomatableMidiLearnSupport.h"
 #include "Utilities/EditViewState.h"
 #include "Utilities/Utilities.h"
 
@@ -27,6 +28,10 @@ public:
     ~AutomatableToggleButton() override;
 
     void mouseDown(const juce::MouseEvent &e) override;
+    void mouseEnter(const juce::MouseEvent &e) override;
+    void mouseExit(const juce::MouseEvent &e) override;
+    void paintOverChildren(juce::Graphics &g) override;
+    bool keyPressed(const juce::KeyPress &key) override;
 
     // AutomatableParameter::Listener overrides
     void curveHasChanged(te::AutomatableParameter &) override {}
@@ -38,6 +43,7 @@ public:
 
 private:
     te::AutomatableParameter::Ptr m_automatableParameter;
+    std::unique_ptr<AutomatableMidiLearnSupport> m_midiLearn;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AutomatableToggleButton)
 };
 

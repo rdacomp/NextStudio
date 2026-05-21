@@ -11,6 +11,7 @@
 #pragma once
 
 #include "../JuceLibraryCode/JuceHeader.h"
+#include "UI/Controls/AutomatableMidiLearnSupport.h"
 #include "Utilities/Utilities.h"
 
 namespace te = tracktion_engine;
@@ -33,8 +34,15 @@ public:
     bool hasAnAutomatableParameter() override { return true; }
     void chooseAutomatableParameter(std::function<void(te::AutomatableParameter::Ptr)> handleChosenParam, std::function<void()> /*startLearnMode*/) override;
 
+    void mouseDown(const juce::MouseEvent &e) override;
+    void mouseEnter(const juce::MouseEvent &e) override;
+    void mouseExit(const juce::MouseEvent &e) override;
+    void paintOverChildren(juce::Graphics &g) override;
+    bool keyPressed(const juce::KeyPress &key) override;
+
 private:
     te::AutomatableParameter::Ptr m_automatableParameter;
+    std::unique_ptr<AutomatableMidiLearnSupport> m_midiLearn;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AutomatableComboBoxComponent)
 };
 

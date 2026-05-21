@@ -18,105 +18,7 @@ constexpr int addAutomationLaneMenuId = 2000;
 constexpr int clearAutomationMenuId = 2001;
 constexpr int midiLearnMenuId = 2100;
 constexpr int removeMidiMappingMenuId = 2101;
-constexpr double midiLearnTimeoutMs = 10000.0;
-
-juce::String getControllerDescription(int controllerId, int channel)
-{
-    const auto channelText = juce::String{"Channel "} + juce::String(channel);
-
-    if (controllerId >= 0x40000)
-        return "Channel Pressure (" + channelText + ")";
-
-    if (controllerId >= 0x30000)
-        return "RPN #" + juce::String(controllerId & 0x7fff) + " (" + channelText + ")";
-
-    if (controllerId >= 0x20000)
-        return "NRPN #" + juce::String(controllerId & 0x7fff) + " (" + channelText + ")";
-
-    if (controllerId >= 0x10000)
-    {
-        const auto cc = controllerId & 0x7f;
-
-        auto label = "CC " + juce::String(cc);
-        const juce::String controllerName{juce::MidiMessage::getControllerName(cc)};
-
-        if (controllerName.isNotEmpty())
-            label << " (" << controllerName << ")";
-
-        return label + " - " + channelText;
-    }
-
-    return "MIDI Controller";
 }
-}
-
-struct AutomatableSliderComponent::MidiLearnListener final : private te::MidiLearnState::Listener
-{
-    MidiLearnListener(AutomatableSliderComponent &ownerIn, te::MidiLearnState &state)
-        : te::MidiLearnState::Listener(state)
-        , owner(ownerIn)
-    {
-    }
-
-    void midiLearnStatusChanged(bool isActive) override { owner.handleMidiLearnStatusChanged(isActive); }
-    void midiLearnAssignmentChanged(te::MidiLearnState::ChangeType changeType) override { owner.handleMidiLearnAssignmentChanged(changeType); }
-
-    AutomatableSliderComponent &owner;
-};
-
-struct AutomatableSliderComponent::MidiMappingSnapshot final
-{
-    struct Entry
-    {
-        te::AutomatableParameter::Ptr parameter;
-        int controllerId = -1;
-        int channel = -1;
-    };
-
-    void capture(te::ParameterControlMappings &mappings)
-    {
-        entries.clear();
-
-        for (int row = 0; row < mappings.getNumControllerIDs(); ++row)
-        {
-            auto mapping = mappings.getMappingForRow(row);
-
-            if (mapping.parameter != nullptr && mapping.controllerID != 0)
-                entries.push_back({mapping.parameter, mapping.controllerID, mapping.channelID});
-        }
-    }
-
-    void restore(te::Edit &edit, te::ParameterControlMappings &mappings) const
-    {
-        for (int row = mappings.getNumControllerIDs(); --row >= 0;)
-            mappings.removeMapping(row);
-
-        mappings.saveToEdit();
-
-        if (!entries.empty())
-        {
-            auto *undoManager = &edit.getUndoManager();
-            auto state = edit.state.getOrCreateChildWithName(te::IDs::CONTROLLERMAPPINGS, undoManager);
-
-            for (const auto &entry : entries)
-            {
-                if (entry.parameter == nullptr || entry.controllerId == 0)
-                    continue;
-
-                auto mappingState = te::createValueTree(te::IDs::MAP,
-                                                        te::IDs::id, entry.controllerId,
-                                                        te::IDs::channel, entry.channel,
-                                                        te::IDs::param, entry.parameter->getFullName(),
-                                                        te::IDs::pluginID, entry.parameter->getOwnerID());
-                state.addChild(mappingState, -1, undoManager);
-            }
-        }
-
-        mappings.loadFromEdit();
-    }
-
-    std::vector<Entry> entries;
-};
 
 AutomatableSliderComponent::AutomatableSliderComponent(const tracktion_engine::AutomatableParameter::Ptr ap)
     : m_automatableParameter(ap)
@@ -127,7 +29,7 @@ AutomatableSliderComponent::AutomatableSliderComponent(const tracktion_engine::A
 
     if (m_automatableParameter != nullptr)
     {
-        m_midiLearnListener = std::make_unique<MidiLearnListener>(*this, m_automatableParameter->getEdit().engine.getMidiLearnState());
+        m_midiLearn = std::make_unique<AutomatableMidiLearnSupport>(*this, m_automatableParameter);
         bindSliderToParameter();
         m_automatableParameter->addListener(this);
 
@@ -184,14 +86,14 @@ AutomatableSliderComponent::AutomatableSliderComponent(const tracktion_engine::A
     };
 
     updateModDepthVisibility();
-    refreshMidiMappingState();
+    if (m_midiLearn != nullptr)
+        m_midiLearn->refreshMappingState();
 }
 
 AutomatableSliderComponent::~AutomatableSliderComponent()
 {
-    cancelMidiLearn();
+    m_midiLearn.reset();
     m_modDepthSlider.removeMouseListener(this);
-    m_midiLearnListener.reset();
 
     if (m_automatableParameter != nullptr)
         m_automatableParameter->removeListener(this);
@@ -199,7 +101,8 @@ AutomatableSliderComponent::~AutomatableSliderComponent()
 
 void AutomatableSliderComponent::mouseEnter(const juce::MouseEvent &)
 {
-    refreshMidiMappingState();
+    if (m_midiLearn != nullptr)
+        m_midiLearn->refreshMappingState();
     updateModDepthVisibility();
     repaint();
 }
@@ -219,39 +122,14 @@ void AutomatableSliderComponent::paintOverChildren(juce::Graphics &g)
     if (m_automatableParameter == nullptr)
         return;
 
-    if (m_midiControllerId >= 0)
-    {
-        auto badgeArea = getLocalBounds().toFloat();
-        badgeArea.reduce(0.f, 5.f);
-        auto badgeBounds = badgeArea.removeFromTop(5.0f).removeFromRight(5.f);
-        g.setColour(juce::Colours::deepskyblue.withAlpha(isMouseOver(true) ? 0.95f : 0.75f));
-        g.fillEllipse(badgeBounds);
-    }
-
-    if (m_isMidiLearnPending)
-    {
-        const auto bounds = getLocalBounds().toFloat().reduced(5.0f);
-        const auto elapsedMs = juce::Time::getMillisecondCounterHiRes() - m_midiLearnStartedMs;
-        const auto pulse = 0.5f + 0.5f * std::sin((float)(elapsedMs * 0.012));
-        const auto borderColour = juce::Colours::orange.withAlpha(0.5f + 0.35f * pulse);
-
-        g.setColour(borderColour);
-        g.drawRoundedRectangle(bounds, 10.0f, 2.0f + pulse * 0.8f);
-
-        auto textBounds = getLocalBounds().reduced(8, 10).removeFromBottom(18);
-        g.setColour(juce::Colours::white.withAlpha(0.85f));
-        g.setFont(juce::Font(juce::FontOptions{10.0f}));
-        g.drawFittedText("Learn...", textBounds, juce::Justification::centred, 1);
-    }
+    if (m_midiLearn != nullptr)
+        m_midiLearn->paintOverChildren(g, getLocalBounds(), isMouseOver(true));
 }
 
 bool AutomatableSliderComponent::keyPressed(const juce::KeyPress &key)
 {
-    if (key == juce::KeyPress::escapeKey && m_isMidiLearnPending)
-    {
-        cancelMidiLearn();
+    if (m_midiLearn != nullptr && m_midiLearn->keyPressed(key))
         return true;
-    }
 
     return juce::Slider::keyPressed(key);
 }
@@ -331,8 +209,8 @@ void AutomatableSliderComponent::mouseDown(const juce::MouseEvent &e)
             m.addSubMenu("Remove Modifier", modifierMenu);
         }
 
-        m.addItem(midiLearnMenuId, m_midiControllerId >= 0 ? "Change MIDI Mapping" : "MIDI Learn");
-        m.addItem(removeMidiMappingMenuId, "Remove MIDI Mapping", m_midiControllerId >= 0);
+        if (m_midiLearn != nullptr)
+            m_midiLearn->addContextMenuItems(m, midiLearnMenuId, removeMidiMappingMenuId);
         m.addSeparator();
 
         if (m_automatableParameter->getCurve().getNumPoints() == 0)
@@ -346,13 +224,8 @@ void AutomatableSliderComponent::mouseDown(const juce::MouseEvent &e)
 
         const int result = m.show();
 
-        if (result == midiLearnMenuId)
+        if (m_midiLearn != nullptr && m_midiLearn->handleContextMenuResult(result, midiLearnMenuId, removeMidiMappingMenuId))
         {
-            beginMidiLearn(m_midiControllerId >= 0);
-        }
-        else if (result == removeMidiMappingMenuId)
-        {
-            removeMidiMapping();
         }
         else if (result == addAutomationLaneMenuId)
         {
@@ -403,18 +276,19 @@ void AutomatableSliderComponent::setParameter(te::AutomatableParameter::Ptr newP
     if (m_automatableParameter == newParam)
         return;
 
-    cancelMidiLearn();
+    if (m_midiLearn != nullptr)
+        m_midiLearn->cancelMidiLearn();
 
     if (m_automatableParameter)
         m_automatableParameter->removeListener(this);
 
-    m_midiLearnListener.reset();
+    m_midiLearn.reset();
 
     m_automatableParameter = newParam;
 
     if (m_automatableParameter)
     {
-        m_midiLearnListener = std::make_unique<MidiLearnListener>(*this, m_automatableParameter->getEdit().engine.getMidiLearnState());
+        m_midiLearn = std::make_unique<AutomatableMidiLearnSupport>(*this, m_automatableParameter);
         m_automatableParameter->addListener(this);
         bindSliderToParameter();
 
@@ -428,14 +302,11 @@ void AutomatableSliderComponent::setParameter(te::AutomatableParameter::Ptr newP
             setDoubleClickReturnValue(false, 0.0);
 
         updateModDepthVisibility();
-        refreshMidiMappingState();
+        m_midiLearn->refreshMappingState();
     }
     else
     {
         setEnabled(false);
-        m_midiChannel = -1;
-        m_midiControllerId = -1;
-        updateTooltip();
     }
 
     repaint();
@@ -498,253 +369,4 @@ void AutomatableSliderComponent::valueChanged()
         float val = static_cast<float>(getValue());
         m_automatableParameter->setParameter(val, juce::sendNotification);
     }
-}
-
-void AutomatableSliderComponent::beginMidiLearn(bool replaceExistingMapping)
-{
-    if (m_automatableParameter == nullptr)
-        return;
-
-    auto *learnState = getMidiLearnState();
-
-    if (learnState == nullptr || getParameterControlMappings() == nullptr)
-        return;
-
-    juce::ignoreUnused(replaceExistingMapping);
-
-    m_midiMappingSnapshot = std::make_unique<MidiMappingSnapshot>();
-    m_midiMappingSnapshot->capture(*getParameterControlMappings());
-
-    refreshMidiMappingState();
-    m_isMidiLearnPending = true;
-    m_midiLearnStartedMs = juce::Time::getMillisecondCounterHiRes();
-    updateTooltip();
-
-    learnState->setActive(true);
-    m_automatableParameter->getEdit().getParameterChangeHandler().parameterChanged(*m_automatableParameter, false);
-
-    startTimerHz(30);
-    grabKeyboardFocus();
-    repaint();
-}
-
-void AutomatableSliderComponent::cancelMidiLearn()
-{
-    if (m_automatableParameter != nullptr)
-    {
-        auto &changeHandler = m_automatableParameter->getEdit().getParameterChangeHandler();
-
-        if (changeHandler.getPendingParam(false).get() == m_automatableParameter.get())
-            changeHandler.getPendingParam(true);
-    }
-
-    if (m_isMidiLearnPending)
-        if (auto *learnState = getMidiLearnState())
-            if (learnState->isActive())
-                learnState->setActive(false);
-
-    finishMidiLearn();
-}
-
-void AutomatableSliderComponent::finishMidiLearn()
-{
-    m_isMidiLearnPending = false;
-    stopTimer();
-    refreshMidiMappingState();
-    m_midiMappingSnapshot.reset();
-    repaint();
-}
-
-bool AutomatableSliderComponent::removeMidiMapping()
-{
-    auto *mappings = getParameterControlMappings();
-
-    if (mappings == nullptr)
-        return false;
-
-    bool removedAny = false;
-
-    while (mappings->removeParameterMapping(*m_automatableParameter))
-        removedAny = true;
-
-    if (removedAny)
-    {
-        refreshMidiMappingState();
-
-        if (auto *learnState = getMidiLearnState())
-            learnState->assignmentChanged(te::MidiLearnState::removed);
-    }
-
-    return removedAny;
-}
-
-void AutomatableSliderComponent::restoreMidiMappingSnapshot()
-{
-    auto *mappings = getParameterControlMappings();
-
-    if (mappings == nullptr || m_automatableParameter == nullptr || m_midiMappingSnapshot == nullptr)
-        return;
-
-    m_midiMappingSnapshot->restore(m_automatableParameter->getEdit(), *mappings);
-    refreshMidiMappingState();
-
-    if (auto *learnState = getMidiLearnState())
-        juce::MessageManager::callAsync([learnState]
-        {
-            learnState->assignmentChanged(te::MidiLearnState::removed);
-        });
-}
-
-bool AutomatableSliderComponent::resolveMidiMappingConflict()
-{
-    auto *mappings = getParameterControlMappings();
-
-    if (mappings == nullptr || m_automatableParameter == nullptr || m_midiControllerId < 0)
-        return true;
-
-    juce::Array<int> conflictingRows;
-    juce::StringArray conflictingParameters;
-
-    for (int row = mappings->getNumControllerIDs(); --row >= 0;)
-    {
-        auto mapping = mappings->getMappingForRow(row);
-
-        if (mapping.parameter != nullptr
-            && mapping.parameter != m_automatableParameter.get()
-            && mapping.controllerID == m_midiControllerId
-            && mapping.channelID == m_midiChannel)
-        {
-            conflictingRows.add(row);
-            conflictingParameters.add(mapping.parameter->getFullName());
-        }
-    }
-
-    if (conflictingRows.isEmpty())
-        return true;
-
-    const auto message = "This MIDI controller is already mapped to:\n\n"
-                         + conflictingParameters.joinIntoString("\n")
-                         + "\n\nWhat would you like to do?";
-
-    const int result = juce::AlertWindow::showYesNoCancelBox(juce::AlertWindow::QuestionIcon,
-                                                            "MIDI Controller Already Mapped",
-                                                            message,
-                                                            "Replace Old",
-                                                            "Add New",
-                                                            "Cancel");
-
-    switch (result)
-    {
-    case 1: // Replace Old
-        for (auto row : conflictingRows)
-            mappings->removeMapping(row);
-
-        if (auto *learnState = getMidiLearnState())
-            juce::MessageManager::callAsync([learnState]
-            {
-                learnState->assignmentChanged(te::MidiLearnState::removed);
-            });
-
-        refreshMidiMappingState();
-        return true;
-
-    case 2: // Add New
-        refreshMidiMappingState();
-        return true;
-
-    case 3: // Cancel
-    default:
-        restoreMidiMappingSnapshot();
-        return false;
-    }
-}
-
-void AutomatableSliderComponent::refreshMidiMappingState()
-{
-    m_midiChannel = -1;
-    m_midiControllerId = -1;
-
-    if (auto *mappings = getParameterControlMappings())
-        mappings->getParameterMapping(*m_automatableParameter, m_midiChannel, m_midiControllerId);
-
-    updateTooltip();
-}
-
-void AutomatableSliderComponent::updateTooltip()
-{
-    if (m_midiControllerId >= 0)
-        setTooltip("MIDI mapped: " + getMidiMappingLabel());
-    else if (m_isMidiLearnPending)
-        setTooltip("Waiting for MIDI controller input. Press Esc to cancel.");
-    else
-        setTooltip(juce::String{});
-}
-
-void AutomatableSliderComponent::timerCallback()
-{
-    if (!m_isMidiLearnPending)
-    {
-        stopTimer();
-        return;
-    }
-
-    if ((juce::Time::getMillisecondCounterHiRes() - m_midiLearnStartedMs) >= midiLearnTimeoutMs)
-    {
-        cancelMidiLearn();
-        return;
-    }
-
-    repaint();
-}
-
-void AutomatableSliderComponent::handleMidiLearnStatusChanged(bool isActive)
-{
-    if (!isActive && m_isMidiLearnPending)
-        finishMidiLearn();
-
-    updateTooltip();
-    repaint();
-}
-
-void AutomatableSliderComponent::handleMidiLearnAssignmentChanged(te::MidiLearnState::ChangeType)
-{
-    refreshMidiMappingState();
-
-    if (m_isMidiLearnPending && m_midiControllerId >= 0)
-    {
-        resolveMidiMappingConflict();
-
-        if (auto *learnState = getMidiLearnState())
-            if (learnState->isActive())
-                learnState->setActive(false);
-
-        finishMidiLearn();
-        return;
-    }
-
-    repaint();
-}
-
-te::MidiLearnState *AutomatableSliderComponent::getMidiLearnState() const
-{
-    if (m_automatableParameter == nullptr)
-        return nullptr;
-
-    return &m_automatableParameter->getEdit().engine.getMidiLearnState();
-}
-
-te::ParameterControlMappings *AutomatableSliderComponent::getParameterControlMappings() const
-{
-    if (m_automatableParameter == nullptr)
-        return nullptr;
-
-    return &m_automatableParameter->getEdit().getParameterControlMappings();
-}
-
-juce::String AutomatableSliderComponent::getMidiMappingLabel() const
-{
-    if (m_midiControllerId < 0)
-        return {};
-
-    return getControllerDescription(m_midiControllerId, m_midiChannel);
 }

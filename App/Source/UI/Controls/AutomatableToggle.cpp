@@ -10,9 +10,20 @@
 
 #include "UI/Controls/AutomatableToggle.h"
 
+namespace
+{
+constexpr int removeModifierMenuBaseId = 1;
+constexpr int addAutomationLaneMenuId = 2000;
+constexpr int clearAutomationMenuId = 2001;
+constexpr int midiLearnMenuId = 2100;
+constexpr int removeMidiMappingMenuId = 2101;
+}
+
 AutomatableToggleButton::AutomatableToggleButton(te::AutomatableParameter::Ptr ap)
     : m_automatableParameter(ap)
 {
+    setWantsKeyboardFocus(true);
+    m_midiLearn = std::make_unique<AutomatableMidiLearnSupport>(*this, m_automatableParameter);
     ap->addListener(this);
     setButtonText(ap->getParameterName());
 
@@ -27,7 +38,11 @@ AutomatableToggleButton::AutomatableToggleButton(te::AutomatableParameter::Ptr a
     };
 }
 
-AutomatableToggleButton::~AutomatableToggleButton() { m_automatableParameter->removeListener(this); }
+AutomatableToggleButton::~AutomatableToggleButton()
+{
+    m_midiLearn.reset();
+    m_automatableParameter->removeListener(this);
+}
 
 void AutomatableToggleButton::currentValueChanged(te::AutomatableParameter &p)
 {
@@ -48,7 +63,7 @@ void AutomatableToggleButton::mouseDown(const juce::MouseEvent &e)
         if (!assignments.isEmpty())
         {
             juce::PopupMenu modifierMenu;
-            int itemId = 1;
+            int itemId = removeModifierMenuBaseId;
 
             auto *track = m_automatableParameter->getTrack();
             if (auto *modifierList = track != nullptr ? track->getModifierList() : nullptr)
@@ -73,18 +88,24 @@ void AutomatableToggleButton::mouseDown(const juce::MouseEvent &e)
             m.addSubMenu("Remove Modifier", modifierMenu);
         }
 
+        m_midiLearn->addContextMenuItems(m, midiLearnMenuId, removeMidiMappingMenuId);
+        m.addSeparator();
+
         if (m_automatableParameter->getCurve().getNumPoints() == 0)
         {
-            m.addItem(2000, "Add automation lane");
+            m.addItem(addAutomationLaneMenuId, "Add automation lane");
         }
         else
         {
-            m.addItem(2001, "Clear automation");
+            m.addItem(clearAutomationMenuId, "Clear automation");
         }
 
         const int result = m.show();
 
-        if (result == 2000)
+        if (m_midiLearn->handleContextMenuResult(result, midiLearnMenuId, removeMidiMappingMenuId))
+        {
+        }
+        else if (result == addAutomationLaneMenuId)
         {
             auto start = tracktion::core::TimePosition::fromSeconds(0.0);
             m_automatableParameter->getCurve().addPoint(start, (float)getToggleState(), 0.0);
@@ -92,13 +113,13 @@ void AutomatableToggleButton::mouseDown(const juce::MouseEvent &e)
             if (auto *track = m_automatableParameter->getTrack())
                 track->state.setProperty(IDs::isTrackMinimized, false, nullptr);
         }
-        else if (result == 2001)
+        else if (result == clearAutomationMenuId)
         {
             m_automatableParameter->getCurve().clear();
         }
-        else if (result >= 1)
+        else if (result >= removeModifierMenuBaseId && result < midiLearnMenuId)
         {
-            int index = result - 1;
+            int index = result - removeModifierMenuBaseId;
             if (index >= 0 && index < assignments.size())
             {
                 m_automatableParameter->removeModifier(*assignments[index]);
@@ -109,6 +130,33 @@ void AutomatableToggleButton::mouseDown(const juce::MouseEvent &e)
     {
         juce::ToggleButton::mouseDown(e);
     }
+}
+
+void AutomatableToggleButton::mouseEnter(const juce::MouseEvent &e)
+{
+    m_midiLearn->refreshMappingState();
+    repaint();
+    juce::ToggleButton::mouseEnter(e);
+}
+
+void AutomatableToggleButton::mouseExit(const juce::MouseEvent &e)
+{
+    repaint();
+    juce::ToggleButton::mouseExit(e);
+}
+
+void AutomatableToggleButton::paintOverChildren(juce::Graphics &g)
+{
+    juce::ToggleButton::paintOverChildren(g);
+    m_midiLearn->paintOverChildren(g, getLocalBounds(), isMouseOver(true));
+}
+
+bool AutomatableToggleButton::keyPressed(const juce::KeyPress &key)
+{
+    if (m_midiLearn->keyPressed(key))
+        return true;
+
+    return juce::ToggleButton::keyPressed(key);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------

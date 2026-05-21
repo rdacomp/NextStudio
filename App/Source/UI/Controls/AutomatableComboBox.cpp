@@ -10,9 +10,17 @@
 
 #include "UI/Controls/AutomatableComboBox.h"
 
+namespace
+{
+constexpr int midiLearnMenuId = 2100;
+constexpr int removeMidiMappingMenuId = 2101;
+}
+
 AutomatableComboBoxComponent::AutomatableComboBoxComponent(te::AutomatableParameter::Ptr ap)
     : m_automatableParameter(ap)
 {
+    setWantsKeyboardFocus(true);
+    m_midiLearn = std::make_unique<AutomatableMidiLearnSupport>(*this, m_automatableParameter);
     ap->addListener(this);
     auto range = ap->valueRange;
     int index = 1;
@@ -46,7 +54,11 @@ AutomatableComboBoxComponent::AutomatableComboBoxComponent(te::AutomatableParame
         }
     };
 }
-AutomatableComboBoxComponent::~AutomatableComboBoxComponent() { m_automatableParameter->removeListener(this); }
+AutomatableComboBoxComponent::~AutomatableComboBoxComponent()
+{
+    m_midiLearn.reset();
+    m_automatableParameter->removeListener(this);
+}
 
 void AutomatableComboBoxComponent::currentValueChanged(te::AutomatableParameter &p)
 {
@@ -59,6 +71,46 @@ void AutomatableComboBoxComponent::currentValueChanged(te::AutomatableParameter 
 }
 
 void AutomatableComboBoxComponent::chooseAutomatableParameter(std::function<void(te::AutomatableParameter::Ptr)> handleChosenParam, std::function<void()> /*startLearnMode*/) { handleChosenParam(m_automatableParameter); }
+
+void AutomatableComboBoxComponent::mouseDown(const juce::MouseEvent &e)
+{
+    if (e.mods.isRightButtonDown())
+    {
+        juce::PopupMenu menu;
+        m_midiLearn->addContextMenuItems(menu, midiLearnMenuId, removeMidiMappingMenuId);
+        m_midiLearn->handleContextMenuResult(menu.show(), midiLearnMenuId, removeMidiMappingMenuId);
+        return;
+    }
+
+    juce::ComboBox::mouseDown(e);
+}
+
+void AutomatableComboBoxComponent::mouseEnter(const juce::MouseEvent &e)
+{
+    m_midiLearn->refreshMappingState();
+    repaint();
+    juce::ComboBox::mouseEnter(e);
+}
+
+void AutomatableComboBoxComponent::mouseExit(const juce::MouseEvent &e)
+{
+    repaint();
+    juce::ComboBox::mouseExit(e);
+}
+
+void AutomatableComboBoxComponent::paintOverChildren(juce::Graphics &g)
+{
+    juce::ComboBox::paintOverChildren(g);
+    m_midiLearn->paintOverChildren(g, getLocalBounds(), isMouseOver(true));
+}
+
+bool AutomatableComboBoxComponent::keyPressed(const juce::KeyPress &key)
+{
+    if (m_midiLearn->keyPressed(key))
+        return true;
+
+    return juce::ComboBox::keyPressed(key);
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 

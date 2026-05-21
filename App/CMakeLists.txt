@@ -148,6 +148,7 @@ target_sources(${TargetName} PRIVATE
         Source/Tools/tools/PointerTool.cpp
         Source/Tools/tools/RangeTool.cpp
         Source/UI/Controls/AutomatableComboBox.cpp
+        Source/UI/Controls/AutomatableMidiLearnSupport.cpp
         Source/UI/Controls/AutomatableEnvelopeParameter.cpp
         Source/UI/Controls/AutomatableParameter.cpp
         Source/UI/Controls/AutomatableSlider.cpp
