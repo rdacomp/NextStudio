@@ -1194,7 +1194,7 @@ void PluginChainView::valueTreePropertyChanged(juce::ValueTree &v, const juce::I
             return;
         }
 
-        rebuildView();
+        markAndUpdate(m_updatePlugins);
     }
 }
 
