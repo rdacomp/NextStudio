@@ -126,7 +126,7 @@ private:
     void showCountInMenu();
     void showFollowMenu();
     void updateCountInButton();
-    void updateUndoRedoButtons();
+    void updateUndoRedoButtons(bool force = false);
     void updateCountInDisplay();
     EditViewState &m_editViewState;
     static juce::FlexBox createFlexBox(juce::FlexBox::JustifyContent justify);
@@ -144,6 +144,9 @@ private:
     PositionDisplayComponent m_display;
 
     juce::Colour m_btn_col;
+    bool m_lastCanUndo{false};
+    bool m_lastCanRedo{false};
+    bool m_undoRedoStateInitialised{false};
 
     juce::File m_loadingFile{};
 

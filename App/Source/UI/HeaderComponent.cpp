@@ -64,7 +64,7 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
     m_redoButton.setTooltip(GUIHelpers::translate("Redo", m_editViewState.m_applicationState));
 
     updateCountInButton();
-    updateUndoRedoButtons();
+    updateUndoRedoButtons(true);
     updateCountInDisplay();
     startTimer(30);
 }
@@ -93,14 +93,22 @@ void HeaderComponent::updateIcons()
     GUIHelpers::setDrawableOnButton(m_clickButton, BinaryData::metronome_svg, m_edit.clickTrackEnabled ? m_btn_col : juce::Colour(0xff666666));
     GUIHelpers::setDrawableOnButton(m_followPlayheadButton, BinaryData::follow_svg, m_editViewState.viewFollowsPos() ? m_btn_col : juce::Colour(0xff666666));
     updateCountInButton();
-    updateUndoRedoButtons();
+    updateUndoRedoButtons(true);
 }
 
-void HeaderComponent::updateUndoRedoButtons()
+void HeaderComponent::updateUndoRedoButtons(bool force)
 {
     auto &undoManager = m_edit.getUndoManager();
     const auto canUndo = undoManager.canUndo();
     const auto canRedo = undoManager.canRedo();
+
+    if (!force && m_undoRedoStateInitialised && canUndo == m_lastCanUndo && canRedo == m_lastCanRedo)
+        return;
+
+    m_lastCanUndo = canUndo;
+    m_lastCanRedo = canRedo;
+    m_undoRedoStateInitialised = true;
+
     const auto disabledColour = juce::Colour(0xff666666);
 
     GUIHelpers::setDrawableOnButton(m_undoButton, BinaryData::undo_svg, canUndo ? m_btn_col : disabledColour);
