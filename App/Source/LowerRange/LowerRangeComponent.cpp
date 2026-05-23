@@ -111,7 +111,7 @@ void LowerRangeComponent::syncActiveTrack(bool forceRefresh)
 
     case LowerRangeView::midiEditor:
         if (targetTrack != nullptr)
-            m_pianoRollEditor.setTrack(targetTrack);
+            m_pianoRollEditor.setTrack(targetTrack, forceRefresh);
         break;
 
     case LowerRangeView::mixer:

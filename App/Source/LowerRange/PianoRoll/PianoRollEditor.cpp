@@ -336,8 +336,21 @@ void PianoRollEditor::buttonClicked(juce::Button *button)
     }
 }
 
-void PianoRollEditor::setTrack(tracktion_engine::Track::Ptr track)
+void PianoRollEditor::setTrack(tracktion_engine::Track::Ptr track, bool forceRefresh)
 {
+    if (track == nullptr)
+    {
+        if (m_pianoRollViewPort != nullptr)
+            clearTrack();
+        return;
+    }
+
+    if (!forceRefresh && m_pianoRollViewPort != nullptr && m_pianoRollViewPort->getTrack() == track)
+        return;
+
+    if (m_pianoRollViewPort != nullptr)
+        clearTrack();
+
     auto sanitizedID = "ID" + track->itemID.toString().removeCharacters("{}-");
     m_timeLine.setTimeLineID(sanitizedID);
     m_pianoRollViewPort = std::make_unique<MidiViewport>(m_editViewState, track, m_timeLine);

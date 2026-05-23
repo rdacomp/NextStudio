@@ -79,7 +79,7 @@ public:
         }
     }
 
-    void setTrack(tracktion_engine::Track::Ptr track);
+    void setTrack(tracktion_engine::Track::Ptr track, bool forceRefresh = false);
     void clearTrack();
 
     TimeLineComponent &getTimeLineComponent() { return m_timeLine; }
