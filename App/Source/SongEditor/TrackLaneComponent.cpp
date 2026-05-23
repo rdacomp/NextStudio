@@ -218,21 +218,7 @@ void TrackLaneComponent::mouseDown(const juce::MouseEvent &e)
             // Double Click -> Piano Roll
             if ((e.getNumberOfClicks() > 1 || m_editViewState.getLowerRangeView() == LowerRangeView::midiEditor) && m_hoveredClip->isMidi())
             {
-                m_editViewState.setLowerRangeView(LowerRangeView::midiEditor);
-                for (auto t : te::getAllTracks(m_editViewState.m_edit))
-                {
-                    t->state.setProperty(IDs::showLowerRange, false, nullptr);
-                    if (t == m_track.get())
-                        t->state.setProperty(IDs::showLowerRange, true, nullptr);
-                }
-
-                if (auto *masterTrack = m_editViewState.m_edit.getMasterTrack())
-                {
-                    if (m_track->isMasterTrack())
-                        masterTrack->state.setProperty(IDs::showLowerRange, true, nullptr);
-                    else
-                        masterTrack->state.setProperty(IDs::showLowerRange, false, nullptr);
-                }
+                EngineHelpers::setLowerRangeTrack(m_editViewState, m_track.get(), static_cast<int>(LowerRangeView::midiEditor));
 
                 if (e.getNumberOfClicks() > 1 && m_track->itemID.isValid())
                 {

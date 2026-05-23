@@ -38,6 +38,7 @@ LowerRangeComponent::LowerRangeComponent(EditViewState &evs)
     addAndMakeVisible(m_pluginChainView);
     addAndMakeVisible(m_mixer);
     m_evs.m_edit.state.addListener(this);
+    m_evs.m_selectionManager.addChangeListener(this);
 
     m_tabBar.onTabSelected = [this](LowerRangeView view) { m_evs.setLowerRangeView(view); };
 
@@ -67,7 +68,57 @@ void LowerRangeComponent::handleSplitterDrag(int dragDistance)
     }
 }
 
-LowerRangeComponent::~LowerRangeComponent() { m_evs.m_edit.state.removeListener(this); }
+LowerRangeComponent::~LowerRangeComponent()
+{
+    m_evs.m_selectionManager.removeChangeListener(this);
+    m_evs.m_edit.state.removeListener(this);
+}
+
+te::Track::Ptr LowerRangeComponent::getTrackMarkedForLowerRange() const
+{
+    for (auto *track : te::getAllTracks(m_evs.m_edit))
+        if (track != nullptr && static_cast<bool>(track->state.getProperty(IDs::showLowerRange, false)))
+            return track;
+
+    return {};
+}
+
+te::Track::Ptr LowerRangeComponent::getSelectedTrackForLowerRange() const
+{
+    if (auto *selectedTrack = m_evs.m_selectionManager.getFirstItemOfType<te::Track>())
+        return selectedTrack;
+
+    if (auto *selectedClip = m_evs.m_selectionManager.getFirstItemOfType<te::Clip>())
+        return selectedClip->getClipTrack();
+
+    return {};
+}
+
+void LowerRangeComponent::syncActiveTrack(bool forceRefresh)
+{
+    auto targetTrack = getSelectedTrackForLowerRange();
+    if (targetTrack == nullptr)
+        targetTrack = getTrackMarkedForLowerRange();
+
+    switch (m_evs.getLowerRangeView())
+    {
+    case LowerRangeView::pluginRack:
+        if (targetTrack != nullptr)
+            m_pluginChainView.setTrack(targetTrack, forceRefresh);
+        else
+            m_pluginChainView.clearTrack();
+        break;
+
+    case LowerRangeView::midiEditor:
+        if (targetTrack != nullptr)
+            m_pianoRollEditor.setTrack(targetTrack);
+        break;
+
+    case LowerRangeView::mixer:
+    case LowerRangeView::none:
+        break;
+    }
+}
 
 void LowerRangeComponent::paint(juce::Graphics &g)
 {
@@ -111,6 +162,8 @@ void LowerRangeComponent::updateView()
     m_pianoRollEditor.setVisible(currentView == LowerRangeView::midiEditor);
     m_mixer.setVisible(currentView == LowerRangeView::mixer);
 
+    syncActiveTrack(true);
+
     resized();
     repaint();
 }
@@ -132,16 +185,7 @@ void LowerRangeComponent::valueTreePropertyChanged(juce::ValueTree &v, const juc
             {
                 GUIHelpers::log("LowerRangeComponent valueTreePropertyChanged ", track->getName());
                 if ((bool)v.getProperty(IDs::showLowerRange) == true)
-                {
-                    if (m_evs.getLowerRangeView() == LowerRangeView::midiEditor)
-                    {
-                        m_pianoRollEditor.setTrack(track);
-                    }
-                    else
-                    {
-                        m_pluginChainView.setTrack(track);
-                    }
-                }
+                    syncActiveTrack(true);
             }
         }
     }
@@ -160,15 +204,7 @@ void LowerRangeComponent::valueTreePropertyChanged(juce::ValueTree &v, const juc
 // if a new track is added, make its rackview visible
 void LowerRangeComponent::valueTreeChildAdded(juce::ValueTree &v, juce::ValueTree &)
 {
-    if (m_evs.getLowerRangeView() != LowerRangeView::midiEditor && v.hasType(te::IDs::TRACK))
-    {
-        auto track = te::findTrackForState(m_evs.m_edit, v);
-        if (track != nullptr)
-        {
-            m_pluginChainView.setTrack(track);
-            m_pluginChainView.setVisible(true);
-        }
-    }
+    juce::ignoreUnused(v);
     resized();
     repaint();
 }
@@ -188,4 +224,10 @@ void LowerRangeComponent::valueTreeChildOrderChanged(juce::ValueTree &, int, int
 {
     resized();
     repaint();
+}
+
+void LowerRangeComponent::changeListenerCallback(juce::ChangeBroadcaster *source)
+{
+    if (source == &m_evs.m_selectionManager)
+        syncActiveTrack(false);
 }

@@ -57,7 +57,7 @@ public:
     void buttonClicked(juce::Button *button) override;
     void scrollBarMoved(juce::ScrollBar *scrollBarThatHasMoved, double newRangeStart) override;
 
-    void setTrack(te::Track::Ptr track);
+    void setTrack(te::Track::Ptr track, bool forceRefresh = false);
     void clearTrack();
     juce::String getCurrentTrackID();
 
@@ -90,6 +90,7 @@ private:
     void detachTrackListeners();
 
     void valueTreeChanged() override {}
+    void valueTreePropertyChanged(juce::ValueTree &, const juce::Identifier &) override;
     void valueTreeChildAdded(juce::ValueTree &, juce::ValueTree &) override;
     void valueTreeChildRemoved(juce::ValueTree &, juce::ValueTree &, int) override;
     void valueTreeChildOrderChanged(juce::ValueTree &, int, int) override;
@@ -117,6 +118,7 @@ private:
     te::Track::Ptr m_track;
     juce::ValueTree m_observedTrackState;
     juce::ValueTree m_observedPluginListState;
+    juce::ValueTree m_observedTrackRackState;
     juce::Label m_nameLabel;
     juce::String m_trackID{""};
 

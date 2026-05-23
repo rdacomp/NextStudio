@@ -653,6 +653,10 @@ void PluginChainView::attachTrackListeners()
     m_observedPluginListState = m_track->pluginList.state;
     if (m_observedPluginListState.isValid())
         m_observedPluginListState.addListener(this);
+
+    m_observedTrackRackState = m_evs.getTrackPluginChainViewState(m_track->itemID);
+    if (m_observedTrackRackState.isValid())
+        m_observedTrackRackState.addListener(this);
 }
 
 void PluginChainView::detachTrackListeners()
@@ -663,8 +667,12 @@ void PluginChainView::detachTrackListeners()
     if (m_observedPluginListState.isValid())
         m_observedPluginListState.removeListener(this);
 
+    if (m_observedTrackRackState.isValid())
+        m_observedTrackRackState.removeListener(this);
+
     m_observedTrackState = {};
     m_observedPluginListState = {};
+    m_observedTrackRackState = {};
 }
 
 void PluginChainView::paint(juce::Graphics &g)
@@ -1104,13 +1112,16 @@ void PluginChainView::buttonClicked(juce::Button *button)
     }
 }
 
-void PluginChainView::setTrack(te::Track::Ptr track)
+void PluginChainView::setTrack(te::Track::Ptr track, bool forceRefresh)
 {
-    if (m_track == track && m_track != nullptr)
+    if (m_track == track && m_track != nullptr && !forceRefresh)
     {
         m_nameLabel.setText(m_track->getName(), juce::dontSendNotification);
         m_modifierSidebar.setTrack(m_track);
         updateTrackPresetManager();
+        m_modifierDetailPanel.setModifier(m_modifierSidebar.getSelectedModifier());
+        resized();
+        repaint();
         return;
     }
 
@@ -1118,12 +1129,12 @@ void PluginChainView::setTrack(te::Track::Ptr track)
 
     m_track = track;
     attachTrackListeners();
-    m_trackID = m_track->itemID.toString();
-    m_nameLabel.setText(m_track->getName(), juce::dontSendNotification);
+    m_trackID = m_track != nullptr ? m_track->itemID.toString() : juce::String();
+    m_nameLabel.setText(m_track != nullptr ? m_track->getName() : juce::String(), juce::dontSendNotification);
 
     m_modifierSidebar.setTrack(m_track);
-    m_modifierDetailPanel.setModifier(nullptr);
     updateTrackPresetManager();
+    m_modifierDetailPanel.setModifier(m_modifierSidebar.getSelectedModifier());
 
     const bool canShowChannelStrip = m_track != nullptr && (m_track->isMasterTrack() || m_track->isAudioTrack() || m_track->isFolderTrack());
     if (canShowChannelStrip)
@@ -1155,8 +1166,36 @@ void PluginChainView::clearTrack()
     }
     m_trackPresetAdapter.reset();
     m_channelStrip.reset();
+    m_selectedRackItemID = {};
 
     rebuildView();
+}
+
+void PluginChainView::valueTreePropertyChanged(juce::ValueTree &v, const juce::Identifier &i)
+{
+    if (v == m_observedTrackState)
+    {
+        if (m_track != nullptr)
+            m_nameLabel.setText(m_track->getName(), juce::dontSendNotification);
+
+        updateTrackPresetManager();
+        markAndUpdate(m_updateLayout);
+        repaint();
+        return;
+    }
+
+    if (v == m_observedTrackRackState)
+    {
+        if (i == IDs::selectedModifier)
+        {
+            m_modifierDetailPanel.setModifier(m_modifierSidebar.getSelectedModifier());
+            markAndUpdate(m_updateLayout);
+            repaint();
+            return;
+        }
+
+        rebuildView();
+    }
 }
 
 void PluginChainView::updateTrackPresetManager()

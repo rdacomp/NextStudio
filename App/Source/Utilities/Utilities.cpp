@@ -1133,6 +1133,23 @@ void EngineHelpers::renderEditToFile(EditViewState &evs, juce::File renderFile, 
 
     te::Renderer::renderToFile("Render", renderFile, evs.m_edit, range, tracksToDo);
 }
+
+void EngineHelpers::setLowerRangeTrack(EditViewState &evs, te::Track *track, int lowerRangeView)
+{
+    evs.setLowerRangeView(static_cast<LowerRangeView>(lowerRangeView));
+
+    for (auto *t : te::getAllTracks(evs.m_edit))
+    {
+        if (t == nullptr)
+            continue;
+
+        t->state.setProperty(IDs::showLowerRange, t == track, nullptr);
+    }
+
+    if (auto *masterTrack = evs.m_edit.getMasterTrack())
+        masterTrack->state.setProperty(IDs::showLowerRange, track != nullptr && track->isMasterTrack(), nullptr);
+}
+
 void EngineHelpers::setMidiInputFocusToSelection(EditViewState &evs)
 {
     auto &dm = evs.m_edit.engine.getDeviceManager();
@@ -1944,6 +1961,7 @@ tracktion_engine::FolderTrack::Ptr EngineHelpers::addFolderTrack(juce::Colour tr
     ft->setName("Folder " + num);
     ft->setColour(trackColour);
     evs.m_selectionManager.selectOnly(ft);
+    setLowerRangeTrack(evs, ft.get(), static_cast<int>(LowerRangeView::pluginRack));
 
     evs.m_trackHeightManager->regenerateTrackHeightsFromEdit(evs.m_edit);
 
@@ -1963,6 +1981,7 @@ tracktion_engine::AudioTrack::Ptr EngineHelpers::addAudioTrack(bool isMidiTrack,
         track->setName(isMidiTrack ? "Instrument " + num : "Wave " + num);
         track->setColour(trackColour);
         evs.m_selectionManager.selectOnly(track);
+        setLowerRangeTrack(evs, track, static_cast<int>(LowerRangeView::pluginRack));
         evs.m_trackHeightManager->regenerateTrackHeightsFromEdit(evs.m_edit);
 
         return track;

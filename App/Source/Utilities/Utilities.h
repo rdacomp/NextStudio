@@ -255,6 +255,7 @@ struct TimeCodeStrings
 
 namespace EngineHelpers
 {
+void setLowerRangeTrack(EditViewState &evs, te::Track *track, int lowerRangeView);
 
 enum class PluginChainRole
 {

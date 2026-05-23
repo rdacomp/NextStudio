@@ -37,6 +37,7 @@ namespace te = tracktion_engine;
 class LowerRangeComponent
     : public juce::Component
     , public te::ValueTreeAllEventListener
+    , private juce::ChangeListener
 {
 public:
     explicit LowerRangeComponent(EditViewState &evs);
@@ -50,12 +51,16 @@ public:
 
 private:
     void updateView();
+    void syncActiveTrack(bool forceRefresh);
+    te::Track::Ptr getTrackMarkedForLowerRange() const;
+    te::Track::Ptr getSelectedTrackForLowerRange() const;
 
     void valueTreeChanged() override {}
     void valueTreePropertyChanged(juce::ValueTree &, const juce::Identifier &) override;
     void valueTreeChildAdded(juce::ValueTree &, juce::ValueTree &) override;
     void valueTreeChildRemoved(juce::ValueTree &, juce::ValueTree &, int) override;
     void valueTreeChildOrderChanged(juce::ValueTree &, int, int) override;
+    void changeListenerCallback(juce::ChangeBroadcaster *source) override;
 
     void handleSplitterMouseDown();
     void handleSplitterDrag(int dragDistance);

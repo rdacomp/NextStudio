@@ -635,23 +635,7 @@ tracktion_engine::MidiClip::Ptr SongEditorView::createNewMidiClip(double beatPos
 
 void SongEditorView::setPianoRoll(te::Track *track)
 {
-    m_editViewState.setLowerRangeView(LowerRangeView::midiEditor);
-
-    for (auto t : te::getAllTracks(m_editViewState.m_edit))
-    {
-        t->state.setProperty(IDs::showLowerRange, false, nullptr);
-
-        if (t == track)
-            t->state.setProperty(IDs::showLowerRange, true, nullptr);
-    }
-
-    if (auto *masterTrack = m_editViewState.m_edit.getMasterTrack())
-    {
-        if (track != nullptr && track->isMasterTrack())
-            masterTrack->state.setProperty(IDs::showLowerRange, true, nullptr);
-        else
-            masterTrack->state.setProperty(IDs::showLowerRange, false, nullptr);
-    }
+    EngineHelpers::setLowerRangeTrack(m_editViewState, track, static_cast<int>(LowerRangeView::midiEditor));
 }
 
 void SongEditorView::updateClipCache()

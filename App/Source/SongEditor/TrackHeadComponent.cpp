@@ -1132,27 +1132,7 @@ void TrackHeaderComponent::mouseUp(const juce::MouseEvent &e)
     if (m_pendingSingleClickSelection && !e.mouseWasDraggedSinceMouseDown() && e.mods.isLeftButtonDown())
     {
         m_editViewState.m_selectionManager.selectOnly(m_track);
-
-        if (m_editViewState.getLowerRangeView() != LowerRangeView::pluginRack)
-            m_editViewState.setLowerRangeView(LowerRangeView::pluginRack);
-
-        for (auto t : te::getAllTracks(m_editViewState.m_edit))
-        {
-            if (t == nullptr)
-                continue;
-
-            t->state.setProperty(IDs::showLowerRange, false, nullptr);
-            if (t == m_track.get())
-                t->state.setProperty(IDs::showLowerRange, true, nullptr);
-        }
-
-        if (auto *masterTrack = m_editViewState.m_edit.getMasterTrack())
-        {
-            if (m_track->isMasterTrack())
-                masterTrack->state.setProperty(IDs::showLowerRange, true, nullptr);
-            else
-                masterTrack->state.setProperty(IDs::showLowerRange, false, nullptr);
-        }
+        EngineHelpers::setLowerRangeTrack(m_editViewState, m_track.get(), static_cast<int>(LowerRangeView::pluginRack));
     }
 
     m_pendingSingleClickSelection = false;
