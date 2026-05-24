@@ -19,3 +19,4 @@ stuff
 autobuild/
 dist
 reinstall_flatpak.sh
+AGENTS.md

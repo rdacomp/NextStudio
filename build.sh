@@ -15,7 +15,9 @@ case $BUILD_TYPE_ARG in
     *) echo "Invalid build type: $BUILD_TYPE_ARG"; exit 1 ;;
 esac
 
-echo "Building $BUILD_TYPE..."
+JOBS="${BUILD_JOBS:-2}"
+
+echo "Building $BUILD_TYPE with $JOBS job(s)..."
 
 # Create build directory
 BUILD_DIR="./autobuild/$BUILD_TYPE"
@@ -27,7 +29,7 @@ cd "$BUILD_DIR"
 
 # Build
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE="$BUILD_TYPE" ../..
-cmake --build . -j 10
+cmake --build . -j "$JOBS"
 
 
 # Move compile commands
