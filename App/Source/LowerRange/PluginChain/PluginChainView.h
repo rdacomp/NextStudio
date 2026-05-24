@@ -152,7 +152,6 @@ private:
     te::EditItemID m_id;
     const int HEADERWIDTH = 20;
     static constexpr int CHANNEL_STRIP_WIDTH = 95;
-    static constexpr int HORIZONTAL_SCROLLBAR_HEIGHT = 20;
     static constexpr int PLUGIN_LIST_WIDTH = 220;
     static constexpr int MODIFIER_STACK_WIDTH = 170;
     static constexpr int PLUGIN_LIST_ROW_HEIGHT = 24;

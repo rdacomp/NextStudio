@@ -615,11 +615,12 @@ PluginChainView::PluginChainView(EditViewState &evs)
     m_horizontalScrollBar.addListener(this);
 
     m_pluginListViewport.setViewedComponent(&m_pluginListContent, false);
+    m_pluginListViewport.setScrollBarThickness(m_evs.m_applicationState.getScrollbarThickness());
     m_pluginListViewport.setScrollBarsShown(true, false, false, false);
     m_pluginPanel->addAndMakeVisible(m_pluginListViewport);
 
     addAndMakeVisible(m_modifierSidebar);
-    addChildComponent(m_modifierDetailPanel); // Start hidden
+    addChildComponent(m_modifierDetailPanel);
 
     m_modifierSidebar.onModifierSelected = [this](te::Modifier::Ptr m)
     {
@@ -882,13 +883,21 @@ void PluginChainView::resized()
 
     int y = 0;
     for (auto *button : m_pluginListButtons)
+        y += PLUGIN_LIST_ROW_HEIGHT;
+
+    const bool needsPluginListScrollbar = y > m_pluginListViewport.getHeight();
+    const int pluginListScrollbarWidth = needsPluginListScrollbar ? m_pluginListViewport.getScrollBarThickness() : 0;
+    const int pluginListContentWidth = juce::jmax(0, m_pluginListViewport.getWidth() - pluginListScrollbarWidth);
+
+    y = 0;
+    for (auto *button : m_pluginListButtons)
     {
-        button->setBounds(0, y, juce::jmax(0, m_pluginListViewport.getWidth() - 12), PLUGIN_LIST_ROW_HEIGHT);
+        button->setBounds(0, y, pluginListContentWidth, PLUGIN_LIST_ROW_HEIGHT);
         y += PLUGIN_LIST_ROW_HEIGHT;
     }
-    m_pluginListContent.setSize(juce::jmax(0, m_pluginListViewport.getWidth() - 12), juce::jmax(m_pluginListViewport.getHeight(), y));
+    m_pluginListContent.setSize(pluginListContentWidth, juce::jmax(m_pluginListViewport.getHeight(), y));
 
-    auto scrollbarArea = area.removeFromBottom(HORIZONTAL_SCROLLBAR_HEIGHT);
+    auto scrollbarArea = area.removeFromBottom(m_evs.m_applicationState.getScrollbarThickness());
     m_horizontalScrollBar.setBounds(scrollbarArea);
     m_pluginCanvas.setBounds(area);
 

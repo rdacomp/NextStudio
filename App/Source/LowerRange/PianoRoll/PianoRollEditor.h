@@ -42,6 +42,7 @@ class PianoRollEditor
     , private FlaggedAsyncUpdater
     , public juce::ApplicationCommandTarget
     , public juce::Button::Listener
+    , private juce::ScrollBar::Listener
 {
 public:
     explicit PianoRollEditor(EditViewState &);
@@ -51,6 +52,7 @@ public:
     void paintOverChildren(juce::Graphics &g) override;
     void resized() override;
     void mouseMove(const juce::MouseEvent &event) override;
+    void scrollBarMoved(juce::ScrollBar *scrollBarThatHasMoved, double newRangeStart) override;
 
     ApplicationCommandTarget *getNextCommandTarget() override { return findFirstTargetParentComponent(); }
     void getAllCommands(juce::Array<juce::CommandID> &commands) override;
@@ -104,13 +106,17 @@ private:
     std::unique_ptr<KeyboardView> m_keyboard;
     PlayheadComponent m_playhead;
     MenuBar m_toolBar;
+    juce::ScrollBar m_horizontalScrollBar{false};
 
     juce::DrawableButton m_selectionBtn, m_drawBtn, m_rangeSelectBtn, m_erasorBtn, m_splitBtn, m_lassoBtn;
 
     juce::String m_NoteDescUnderCursor;
     void handleAsyncUpdate() override;
 
-    bool m_updateKeyboard{false}, m_updateVelocity{false}, m_updateNoteEditor{false}, m_updateClips{false}, m_updateTracks{false}, m_updateButtonColour{false};
+    bool m_updateKeyboard{false}, m_updateVelocity{false}, m_updateNoteEditor{false}, m_updateClips{false}, m_updateTracks{false}, m_updateButtonColour{false}, m_updateHorizontalScrollbar{false};
+
+    void updateHorizontalScrollBar();
+    int getScrollbarThickness() const;
 
     juce::Rectangle<int> getHeaderRect();
     juce::Rectangle<int> getToolBarRect();
@@ -120,7 +126,10 @@ private:
     juce::Rectangle<int> getMidiEditorRect();
     juce::Rectangle<int> getParameterToolbarRect();
     juce::Rectangle<int> getVelocityEditorRect();
+    juce::Rectangle<int> getHorizontalScrollbarRect();
+    juce::Rectangle<int> getHorizontalScrollbarSpacerRect();
     juce::Rectangle<int> getFooterRect();
     juce::Rectangle<int> getPlayHeadRect();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PianoRollEditor)
 };

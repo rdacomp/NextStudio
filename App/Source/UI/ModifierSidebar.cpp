@@ -251,7 +251,8 @@ ModifierSidebar::ModifierSidebar(EditViewState &evs)
 {
     addAndMakeVisible(m_viewport);
     m_viewport.setViewedComponent(&m_listContainer, false);
-    m_viewport.setScrollBarsShown(true, false, false, false); // vertical scrollbar only
+    m_viewport.setScrollBarThickness(m_evs.m_applicationState.getScrollbarThickness());
+    m_viewport.setScrollBarsShown(true, false, false, false);
 
     addAndMakeVisible(m_addButton);
     m_addButton.setButtonText("Add modifier");
@@ -299,16 +300,13 @@ void ModifierSidebar::setTrack(te::Track::Ptr track)
     if (m_track == track)
         return;
 
-    // Remove listeners from old objects
     if (m_track)
         m_track->state.removeListener(this);
 
     m_currentTrackRackState.removeListener(this);
 
-    // Update track
     m_track = track;
 
-    // Setup new state
     juce::ValueTree newRackState;
 
     if (m_track)
@@ -347,26 +345,14 @@ void ModifierSidebar::handleAsyncUpdate()
     if (compareAndReset(m_structureChanged))
     {
         updateList();
-        // updateList also handles selection state init
     }
     else if (compareAndReset(m_selectionChanged))
     {
         updateSelectionState();
     }
 
-    // Notify listener (PluginChainView) about selection change if any update happened
     if (onModifierSelected)
-    {
-        auto selectedID = getSelectedModifier() ? getSelectedModifier()->itemID : te::EditItemID();
-        // We need to resolve the ID to a Ptr
-        te::Modifier::Ptr selectedMod;
-        if (m_track && selectedID.isValid())
-        {
-            if (auto *ml = m_track->getModifierList())
-                selectedMod = te::findModifierForID(*ml, selectedID);
-        }
-        onModifierSelected(selectedMod);
-    }
+        onModifierSelected(getSelectedModifier());
 }
 
 void ModifierSidebar::updateList()
@@ -393,7 +379,7 @@ void ModifierSidebar::updateList()
         }
     }
 
-    resized(); // Re-layout
+    resized();
     repaint();
 }
 
@@ -433,7 +419,11 @@ void ModifierSidebar::resized()
     for (auto *item : m_items)
         totalHeight += item->getDesiredHeight();
 
-    m_listContainer.setSize(m_viewport.getWidth(), std::max(m_viewport.getHeight(), totalHeight));
+    const bool needsVerticalScrollbar = totalHeight > m_viewport.getHeight();
+    const int scrollbarWidth = needsVerticalScrollbar ? m_viewport.getScrollBarThickness() : 0;
+    const int contentWidth = juce::jmax(0, m_viewport.getWidth() - scrollbarWidth);
+
+    m_listContainer.setSize(contentWidth, std::max(m_viewport.getHeight(), totalHeight));
 
     int y = 0;
     for (auto *item : m_items)

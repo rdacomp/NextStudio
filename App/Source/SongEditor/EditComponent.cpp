@@ -292,7 +292,7 @@ void EditComponent::resized()
         m_masterLane->resized();
     }
 
-    m_scrollbar_v.setBounds(getScrollableSongEditorRect().removeFromRight(20));
+    m_scrollbar_v.setBounds(getScrollableSongEditorRect().removeFromRight(m_editViewState.m_applicationState.getScrollbarThickness()));
     m_scrollbar_v.setCurrentRange(-m_editViewState.getViewYScroll(m_timeLine.getTimeLineID()), getScrollableSongEditorRect().getHeight() / 2.0);
     m_footerbar.setBounds(getFooterRect());
     m_playhead.setBounds(getPlayHeadRect());
@@ -1057,7 +1057,7 @@ juce::Rectangle<int> EditComponent::getMasterLaneRect()
 juce::Rectangle<int> EditComponent::getHorizontalScrollbarRect()
 {
     auto rect = getSongEditorRect();
-    return rect.removeFromBottom(20);
+    return rect.removeFromBottom(m_editViewState.m_applicationState.getScrollbarThickness());
 }
 
 juce::Rectangle<int> EditComponent::getFooterRect()

@@ -207,6 +207,7 @@ ModifierViewComponent::ModifierViewComponent(EditViewState &evs, te::Modifier::P
 
     addAndMakeVisible(m_viewPort);
     m_viewPort.setViewedComponent(&m_paramListComponent, false);
+    m_viewPort.setScrollBarThickness(m_editViewState.m_applicationState.getScrollbarThickness());
     m_viewPort.setScrollBarsShown(true, false, true, false);
 }
 
