@@ -30,7 +30,6 @@ struct ImportedNote
     double startBeat = 0.0;
     double lengthBeats = 1.0;
     float velocity = 0.8f;
-    int channel = 1;
 };
 
 struct ImportedTrack
@@ -98,7 +97,6 @@ ImportedTrack parseTrack(const juce::MidiMessageSequence& sourceSequence, int tr
         importedNote.startBeat = startBeat;
         importedNote.lengthBeats = lengthBeats;
         importedNote.velocity = juce::jlimit(0.01f, 1.0f, message.getFloatVelocity());
-        importedNote.channel = message.getChannel();
 
         importedTrack.notes.add(importedNote);
         importedTrack.endBeat = juce::jmax(importedTrack.endBeat, startBeat + lengthBeats);
@@ -112,23 +110,23 @@ tracktion::TimeDuration beatDurationToTime(EditViewState& editViewState, double 
     return tracktion::TimeDuration::fromSeconds(juce::jmax(0.001, editViewState.beatToTime(beats)));
 }
 
-void importTrackNotes(EditViewState& editViewState, const ImportedTrack& importedTrack, juce::Colour trackColour)
+bool importTrackNotes(EditViewState& editViewState, const ImportedTrack& importedTrack, juce::Colour trackColour)
 {
     if (importedTrack.notes.isEmpty())
-        return;
+        return false;
 
     auto track = EngineHelpers::addAudioTrack(true, trackColour, editViewState);
     if (track == nullptr)
-        return;
+        return false;
 
     track->setName(importedTrack.name);
 
-    const auto clipLength = beatDurationToTime(editViewState, juce::jmax(1.0, importedTrack.endBeat));
-    tracktion::TimeRange clipRange(tracktion::TimePosition::fromSeconds(0.0), clipLength);
+    const auto clipStart = tracktion::TimePosition::fromSeconds(0.0);
+    const auto clipEnd = clipStart + beatDurationToTime(editViewState, juce::jmax(1.0, importedTrack.endBeat));
 
-    auto midiClip = track->insertMIDIClip(clipRange, &editViewState.m_selectionManager);
+    auto midiClip = track->insertMIDIClip({clipStart, clipEnd}, &editViewState.m_selectionManager);
     if (midiClip == nullptr)
-        return;
+        return false;
 
     midiClip->setName(importedTrack.name);
 
@@ -144,6 +142,8 @@ void importTrackNotes(EditViewState& editViewState, const ImportedTrack& importe
                          111,
                          &undoManager);
     }
+
+    return true;
 }
 }
 
@@ -201,9 +201,17 @@ MidiImportReport MidiImportService::importMidiFile(EditViewState& editViewState,
 
     for (const auto& importedTrack : tracksToImport)
     {
-        importTrackNotes(editViewState, importedTrack, editViewState.m_applicationState.getRandomTrackColour());
-        report.importedTracks++;
-        report.importedNotes += importedTrack.notes.size();
+        if (importTrackNotes(editViewState, importedTrack, editViewState.m_applicationState.getRandomTrackColour()))
+        {
+            report.importedTracks++;
+            report.importedNotes += importedTrack.notes.size();
+        }
+    }
+
+    if (report.importedTracks == 0)
+    {
+        report.message = "Could not create MIDI track(s) in the current edit.";
+        return report;
     }
 
     editViewState.m_trackHeightManager->regenerateTrackHeightsFromEdit(editViewState.m_edit);
