@@ -84,6 +84,7 @@ target_sources(${TargetName} PRIVATE
         Source/LowerRange/PluginChain/PluginChainView.cpp
         Source/Main.cpp
         Source/MainComponent.cpp
+        Source/Services/MidiImportService.cpp
         Source/Plugins/Arpeggiator/ArpeggiatorPlugin.cpp
         Source/Plugins/Arpeggiator/ArpeggiatorPluginComponent.cpp
         Source/Plugins/PeakLimiter/PeakLimiterPlugin.cpp
