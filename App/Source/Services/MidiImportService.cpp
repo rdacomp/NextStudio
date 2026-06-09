@@ -107,11 +107,6 @@ ImportedTrack parseTrack(const juce::MidiMessageSequence& sourceSequence, int tr
     return importedTrack;
 }
 
-tracktion::TimePosition beatToTime(EditViewState& editViewState, double beat)
-{
-    return tracktion::TimePosition::fromSeconds(juce::jmax(0.0, editViewState.beatToTime(beat)));
-}
-
 tracktion::TimeDuration beatDurationToTime(EditViewState& editViewState, double beats)
 {
     return tracktion::TimeDuration::fromSeconds(juce::jmax(0.001, editViewState.beatToTime(beats)));
@@ -129,10 +124,9 @@ void importTrackNotes(EditViewState& editViewState, const ImportedTrack& importe
     track->setName(importedTrack.name);
 
     const auto clipLength = beatDurationToTime(editViewState, juce::jmax(1.0, importedTrack.endBeat));
-    te::ClipPosition clipPosition;
-    clipPosition.time = { tracktion::TimePosition::fromSeconds(0.0), clipLength };
+    tracktion::TimeRange clipRange(tracktion::TimePosition::fromSeconds(0.0), clipLength);
 
-    auto midiClip = track->insertMIDIClip(importedTrack.name, clipPosition.time, &editViewState.m_selectionManager);
+    auto midiClip = track->insertMIDIClip(clipRange, &editViewState.m_selectionManager);
     if (midiClip == nullptr)
         return;
 
@@ -144,15 +138,12 @@ void importTrackNotes(EditViewState& editViewState, const ImportedTrack& importe
     for (const auto& note : importedTrack.notes)
     {
         sequence.addNote(note.noteNumber,
-                         tracktion::BeatPosition::fromBeats(note.startBeat),
-                         tracktion::BeatDuration::fromBeats(note.lengthBeats),
+                         tracktion::core::BeatPosition::fromBeats(note.startBeat),
+                         tracktion::core::BeatDuration::fromBeats(note.lengthBeats),
                          note.velocity,
-                         0,
+                         111,
                          &undoManager);
     }
-
-    if (!importedTrack.notes.isEmpty())
-        midiClip->setMidiChannel(importedTrack.notes.getFirst().channel);
 }
 }
 
