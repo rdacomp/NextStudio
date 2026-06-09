@@ -1,4 +1,3 @@
-
 /*
 
 This file is part of NextStudio.
@@ -125,6 +124,8 @@ private:
     juce::String getCountInModeText() const;
     void showCountInMenu();
     void showFollowMenu();
+    void browseAndImportMidiFile();
+    void importMidiFile(const juce::File &midiFile);
     void updateCountInButton();
     void updateUndoRedoButtons(bool force = false);
     void updateCountInDisplay();
@@ -136,6 +137,7 @@ private:
     void addButtonsToFlexBox(juce::FlexBox &box, const juce::Array<juce::Component *> &buttons, int width = 0);
     void addFlexBoxToFlexBox(juce::FlexBox &target, const juce::Array<juce::FlexBox *> &items);
     juce::DrawableButton m_stopButton, m_recordButton, m_playButton, m_loopButton, m_clickButton, m_followPlayheadButton, m_undoButton, m_redoButton;
+    juce::TextButton m_importMidiButton{"Import MIDI"};
     PreRollCounterButton m_countInButton;
     te::Edit &m_edit;
     ApplicationViewState &m_applicationState;
@@ -149,6 +151,7 @@ private:
     bool m_undoRedoStateInitialised{false};
 
     juce::File m_loadingFile{};
+    std::unique_ptr<juce::FileChooser> m_midiImportChooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HeaderComponent)
 };
