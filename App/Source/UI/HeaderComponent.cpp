@@ -1,4 +1,3 @@
-
 /*
 
 This file is part of NextStudio.
@@ -21,6 +20,7 @@ along with this program.  If not, see https://www.gnu.org/licenses/.
 */
 
 #include "UI/HeaderComponent.h"
+#include "Services/MidiImportService.h"
 #include "Utilities/Utilities.h"
 
 HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &applicationState, juce::ApplicationCommandManager &commandManager)
@@ -39,7 +39,7 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
       m_commandManager(commandManager),
       m_display(m_edit)
 {
-    Helpers::addAndMakeVisible(*this, {&m_stopButton, &m_playButton, &m_recordButton, &m_countInButton, &m_display, &m_clickButton, &m_loopButton, &m_followPlayheadButton, &m_undoButton, &m_redoButton});
+    Helpers::addAndMakeVisible(*this, {&m_stopButton, &m_playButton, &m_recordButton, &m_countInButton, &m_display, &m_importMidiButton, &m_clickButton, &m_loopButton, &m_followPlayheadButton, &m_undoButton, &m_redoButton});
 
     updateIcons();
 
@@ -52,6 +52,7 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
     m_followPlayheadButton.addListener(this);
     m_undoButton.addListener(this);
     m_redoButton.addListener(this);
+    m_importMidiButton.addListener(this);
     m_followPlayheadButton.addMouseListener(this, false);
 
     m_playButton.setTooltip(GUIHelpers::translate("Play", m_editViewState.m_applicationState));
@@ -62,6 +63,7 @@ HeaderComponent::HeaderComponent(EditViewState &evs, ApplicationViewState &appli
     m_followPlayheadButton.setTooltip(GUIHelpers::translate("View follows playhead on/off", m_editViewState.m_applicationState));
     m_undoButton.setTooltip(GUIHelpers::translate("Undo", m_editViewState.m_applicationState));
     m_redoButton.setTooltip(GUIHelpers::translate("Redo", m_editViewState.m_applicationState));
+    m_importMidiButton.setTooltip(GUIHelpers::translate("Import MIDI file", m_editViewState.m_applicationState));
 
     updateCountInButton();
     updateUndoRedoButtons(true);
@@ -80,6 +82,7 @@ HeaderComponent::~HeaderComponent()
     m_followPlayheadButton.removeListener(this);
     m_undoButton.removeListener(this);
     m_redoButton.removeListener(this);
+    m_importMidiButton.removeListener(this);
 }
 
 void HeaderComponent::updateIcons()
@@ -147,13 +150,15 @@ void HeaderComponent::resized()
     const auto gapWidth = getGapSize();
     const auto timelineControlsWidth = (buttonWidth * 3) + (gapWidth * 6);
     const auto historyWidth = (buttonWidth * 2) + (gapWidth * 4);
+    const auto importButtonWidth = juce::jmax(buttonWidth * 3, 105);
 
     addButtonsToFlexBox(transportBox, transportButtons);
     addButtonsToFlexBox(transportBox, {&m_countInButton});
     addButtonsToFlexBox(positionBox, {&m_display}, displayWidth);
+    addButtonsToFlexBox(timelineControlsBox, {&m_importMidiButton}, importButtonWidth);
     addButtonsToFlexBox(timelineControlsBox, timeLineButtons);
     addButtonsToFlexBox(historyBox, historyButtons);
-    timelineSetBox.items.add(juce::FlexItem((float)timelineControlsWidth, (float)buttonWidth, timelineControlsBox));
+    timelineSetBox.items.add(juce::FlexItem((float)(timelineControlsWidth + importButtonWidth + gapWidth * 2), (float)buttonWidth, timelineControlsBox));
     timelineSetBox.items.add(juce::FlexItem((float)historyWidth, (float)buttonWidth, historyBox));
 
     auto containers = {&transportBox, &positionBox, &timelineSetBox};
@@ -201,6 +206,10 @@ void HeaderComponent::buttonClicked(juce::Button *button)
     {
         if (!m_editViewState.isRecordCountingIn())
             showCountInMenu();
+    }
+    if (button == &m_importMidiButton)
+    {
+        browseAndImportMidiFile();
     }
     if (button == &m_loopButton)
     {
@@ -312,6 +321,41 @@ void HeaderComponent::showFollowMenu()
                         }
                         updateIcons();
                     });
+}
+
+void HeaderComponent::browseAndImportMidiFile()
+{
+    m_midiImportChooser = std::make_unique<juce::FileChooser>("Import MIDI file...", juce::File(), "*.mid;*.midi");
+    juce::Component::SafePointer<HeaderComponent> safeThis(this);
+
+    m_midiImportChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                     [safeThis](const juce::FileChooser& chooser)
+                                     {
+                                         if (safeThis == nullptr)
+                                             return;
+
+                                         const auto selectedFile = chooser.getResult();
+                                         if (selectedFile.existsAsFile())
+                                             safeThis->importMidiFile(selectedFile);
+
+                                         safeThis->m_midiImportChooser = nullptr;
+                                     });
+}
+
+void HeaderComponent::importMidiFile(const juce::File &midiFile)
+{
+    const auto report = MidiImportService::importMidiFile(m_editViewState, midiFile);
+
+    if (report.importedTracks > 0)
+    {
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon, "MIDI import", report.message);
+        sendChangeMessage();
+        if (auto* parent = getParentComponent())
+            parent->resized();
+        return;
+    }
+
+    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon, "MIDI import failed", report.message);
 }
 
 void HeaderComponent::loopButtonClicked() { GUIHelpers::setDrawableOnButton(m_loopButton, BinaryData::cached_svg, m_edit.getTransport().looping ? m_btn_col : juce::Colour(0xff666666)); }
