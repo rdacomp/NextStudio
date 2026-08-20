@@ -1,4 +1,4 @@
-name: Temporary U200B Android 3.4 Unsigned Build
+name: Temporary U200B Android 3.5 Unsigned Build
 
 on:
   pull_request:
@@ -42,7 +42,7 @@ jobs:
         run: |
           BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
           UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
-          ALIGNED="app/build/outputs/apk/release/U200B_TextMatrix_Android_3.4_ALIGNED_UNSIGNED.apk"
+          ALIGNED="app/build/outputs/apk/release/U200B_TextMatrix_Android_3.5_ALIGNED_UNSIGNED.apk"
           "$BT/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
           "$BT/zipalign" -c -v 4 "$ALIGNED" | tee app/build/outputs/apk/release/zipalign-report.txt
           sha256sum "$ALIGNED" | tee app/build/outputs/apk/release/SHA256_UNSIGNED.txt
@@ -51,9 +51,9 @@ jobs:
       - name: Upload aligned unsigned APK
         uses: actions/upload-artifact@v4
         with:
-          name: U200B-TextMatrix-Android-3.4-unsigned
+          name: U200B-TextMatrix-Android-3.5-unsigned
           path: |
-            chatgpt-build/u200b/app/build/outputs/apk/release/U200B_TextMatrix_Android_3.4_ALIGNED_UNSIGNED.apk
+            chatgpt-build/u200b/app/build/outputs/apk/release/U200B_TextMatrix_Android_3.5_ALIGNED_UNSIGNED.apk
             chatgpt-build/u200b/app/build/outputs/apk/release/zipalign-report.txt
             chatgpt-build/u200b/app/build/outputs/apk/release/SHA256_UNSIGNED.txt
             chatgpt-build/u200b/app/build/outputs/apk/release/apksigner.jar
