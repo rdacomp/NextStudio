@@ -4,6 +4,7 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:label="U+200B MATRIX"
         android:theme="@style/AppTheme">
         <activity
