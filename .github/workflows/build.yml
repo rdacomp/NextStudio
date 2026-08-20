@@ -1,4 +1,4 @@
-name: Temporary U200B Android APK Build
+name: Temporary U200B Android 3.4 Unsigned Build
 
 on:
   pull_request:
@@ -37,45 +37,23 @@ jobs:
         working-directory: chatgpt-build/u200b
         run: gradle --no-daemon :app:assembleRelease
 
-      - name: Generate temporary signing key
-        run: |
-          keytool -genkeypair -v \
-            -keystore /tmp/u200b-release.jks \
-            -storepass U200BBuild2026 \
-            -keypass U200BBuild2026 \
-            -alias u200b \
-            -keyalg RSA -keysize 3072 -validity 3650 \
-            -dname "CN=U200B Text Matrix,O=U200B Build,C=US"
-
-      - name: Align, sign and verify
+      - name: Zipalign unsigned APK
         working-directory: chatgpt-build/u200b
         run: |
           BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
           UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
-          ALIGNED="app/build/outputs/apk/release/U200B_TextMatrix_3.3_aligned.apk"
-          FINAL="app/build/outputs/apk/release/U200B_TextMatrix_Android_3.3_INSTALL.apk"
+          ALIGNED="app/build/outputs/apk/release/U200B_TextMatrix_Android_3.4_ALIGNED_UNSIGNED.apk"
           "$BT/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
-          "$BT/apksigner" sign \
-            --ks /tmp/u200b-release.jks \
-            --ks-key-alias u200b \
-            --ks-pass pass:U200BBuild2026 \
-            --key-pass pass:U200BBuild2026 \
-            --v1-signing-enabled true \
-            --v2-signing-enabled true \
-            --v3-signing-enabled true \
-            --out "$FINAL" "$ALIGNED"
-          "$BT/zipalign" -c -v 4 "$FINAL" | tee app/build/outputs/apk/release/zipalign-report.txt
-          "$BT/apksigner" verify --verbose --print-certs "$FINAL" | tee app/build/outputs/apk/release/signature-report.txt
-          sha256sum "$FINAL" | tee app/build/outputs/apk/release/SHA256.txt
+          "$BT/zipalign" -c -v 4 "$ALIGNED" | tee app/build/outputs/apk/release/zipalign-report.txt
+          sha256sum "$ALIGNED" | tee app/build/outputs/apk/release/SHA256_UNSIGNED.txt
 
-      - name: Upload installable APK
+      - name: Upload aligned unsigned APK
         uses: actions/upload-artifact@v4
         with:
-          name: U200B-TextMatrix-Android-3.3
+          name: U200B-TextMatrix-Android-3.4-unsigned
           path: |
-            chatgpt-build/u200b/app/build/outputs/apk/release/U200B_TextMatrix_Android_3.3_INSTALL.apk
-            chatgpt-build/u200b/app/build/outputs/apk/release/signature-report.txt
+            chatgpt-build/u200b/app/build/outputs/apk/release/U200B_TextMatrix_Android_3.4_ALIGNED_UNSIGNED.apk
             chatgpt-build/u200b/app/build/outputs/apk/release/zipalign-report.txt
-            chatgpt-build/u200b/app/build/outputs/apk/release/SHA256.txt
+            chatgpt-build/u200b/app/build/outputs/apk/release/SHA256_UNSIGNED.txt
           if-no-files-found: error
           retention-days: 1
