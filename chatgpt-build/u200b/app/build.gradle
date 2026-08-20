@@ -1,0 +1,31 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.dmitriy.u200btextmatrix'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.dmitriy.u200btextmatrix'
+        minSdk 23
+        targetSdk 36
+        versionCode 1
+        versionName '3.3'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+}
