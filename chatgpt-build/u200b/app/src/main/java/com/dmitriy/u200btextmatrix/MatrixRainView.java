@@ -43,11 +43,12 @@ public final class MatrixRainView extends View {
 
     @Override protected void onSizeChanged(int w,int h,int ow,int oh){
         if(w<=0||h<=0)return;
-        int count=Math.max(22,(int)(w/(19*density)));
+        // 3.5: roughly twice as many live Matrix columns as 3.4.
+        int count=Math.max(44,(int)(w/(9.5f*density)));
         streams=new Stream[count];
         for(int i=0;i<count;i++){
-            Stream s=new Stream();s.x=(i+.5f)*w/count+rr(-4*density,4*density);s.y=rr(-h,h);
-            s.speed=rr(85*density,180*density);s.length=ri(21,50);s.brightness=rr(.72f,1f);s.seed=rnd.nextInt(10000);streams[i]=s;
+            Stream s=new Stream();s.x=(i+.5f)*w/count+rr(-3*density,3*density);s.y=rr(-h,h);
+            s.speed=rr(82*density,185*density);s.length=ri(24,56);s.brightness=rr(.68f,1f);s.seed=rnd.nextInt(10000);streams[i]=s;
         }
         last=0;
     }
@@ -59,15 +60,15 @@ public final class MatrixRainView extends View {
         float center=w*.5f,half=w*.34f;
         for(Stream s:streams){
             s.y+=s.speed*dt;
-            if(s.y-s.length*step>h+step){s.y=rr(-h*.65f,-step);s.speed=rr(85*density,180*density);s.length=ri(21,50);s.brightness=rr(.72f,1f);s.seed=rnd.nextInt(10000);}
+            if(s.y-s.length*step>h+step){s.y=rr(-h*.65f,-step);s.speed=rr(82*density,185*density);s.length=ri(24,56);s.brightness=rr(.68f,1f);s.seed=rnd.nextInt(10000);}
             float factor=.56f+.44f*Math.min(1f,Math.abs(s.x-center)/Math.max(1f,half));
             for(int i=0;i<s.length;i++){
                 float y=s.y-i*step;if(y<-step||y>h+step)continue;
-                float tail=1f-i/(float)s.length;int alpha=clamp((int)(tail*tail*215*factor*s.brightness),15,215);
+                float tail=1f-i/(float)s.length;int alpha=clamp((int)(tail*tail*205*factor*s.brightness),13,205);
                 char ch=GLYPHS[Math.floorMod(s.seed+i*17+(int)(s.y/step),GLYPHS.length)];
-                boolean soft=!softZone.isEmpty()&&softZone.contains(s.x,y);Paint p=soft?softGlyph:glyph;int a=soft?clamp((int)(alpha*.68f),18,150):alpha;
-                if(i==0){p.setColor(Color.argb(soft?clamp((int)(165*factor),70,165):clamp((int)(240*factor),100,240),220,255,224));p.setShadowLayer(size*(soft?.18f:.42f),0,0,Color.rgb(90,255,135));}
-                else if(i<=3){p.setColor(Color.argb(a,125,255,155));p.setShadowLayer(size*(soft?.08f:.16f),0,0,Color.rgb(25,225,92));}
+                boolean soft=!softZone.isEmpty()&&softZone.contains(s.x,y);Paint p=soft?softGlyph:glyph;int a=soft?clamp((int)(alpha*.66f),16,145):alpha;
+                if(i==0){p.setColor(Color.argb(soft?clamp((int)(160*factor),65,160):clamp((int)(235*factor),95,235),220,255,224));p.setShadowLayer(size*(soft?.18f:.40f),0,0,Color.rgb(90,255,135));}
+                else if(i<=3){p.setColor(Color.argb(a,125,255,155));p.setShadowLayer(size*(soft?.08f:.15f),0,0,Color.rgb(25,225,92));}
                 else{p.setColor(Color.argb(a,45,224,91));p.clearShadowLayer();}
                 c.drawText(String.valueOf(ch),s.x,y,p);
             }
