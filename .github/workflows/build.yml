@@ -37,7 +37,7 @@ jobs:
         working-directory: chatgpt-build/u200b
         run: gradle --no-daemon :app:assembleRelease
 
-      - name: Zipalign unsigned APK
+      - name: Zipalign unsigned APK and export signer tool
         working-directory: chatgpt-build/u200b
         run: |
           BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
@@ -46,6 +46,7 @@ jobs:
           "$BT/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
           "$BT/zipalign" -c -v 4 "$ALIGNED" | tee app/build/outputs/apk/release/zipalign-report.txt
           sha256sum "$ALIGNED" | tee app/build/outputs/apk/release/SHA256_UNSIGNED.txt
+          cp "$BT/lib/apksigner.jar" app/build/outputs/apk/release/apksigner.jar
 
       - name: Upload aligned unsigned APK
         uses: actions/upload-artifact@v4
@@ -55,5 +56,6 @@ jobs:
             chatgpt-build/u200b/app/build/outputs/apk/release/U200B_TextMatrix_Android_3.4_ALIGNED_UNSIGNED.apk
             chatgpt-build/u200b/app/build/outputs/apk/release/zipalign-report.txt
             chatgpt-build/u200b/app/build/outputs/apk/release/SHA256_UNSIGNED.txt
+            chatgpt-build/u200b/app/build/outputs/apk/release/apksigner.jar
           if-no-files-found: error
           retention-days: 1
